@@ -127,11 +127,14 @@ await Zotero.ZotPDF.Engine.run(ZoteroPane.getSelectedItems(), window);
 
 ## Documentation site
 
-The docs are built with [Zensical](https://zensical.org): `zensical.toml` is the config and
-`docs/*.md` the pages (icons are the bundled Lucide set, e.g. `:lucide-file-down:`).
+The docs are built with [Zensical](https://zensical.org): `zensical.toml` is the config,
+`docs/*.md` the pages (icons are the bundled Lucide set, e.g. `:lucide-file-down:`), and
+pages are grouped with front-matter `tags:` (identifiers and icons live under `[project.extra.tags]`
+and `[project.theme.icon.tag]`). `overrides/main.html` adds the favicon tags; regenerate the favicon
+set with `node scripts/make-favicons.js` (needs Playwright).
 
 ```bash
-pip install --require-hashes --only-binary=:all: -r docs/requirements.txt
+pip install --require-hashes --only-binary=:all: -r docs-requirements.txt
 zensical serve          # live preview at http://localhost:8000
 zensical build --clean  # writes site/
 ```

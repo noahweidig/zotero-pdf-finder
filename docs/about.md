@@ -1,5 +1,8 @@
 ---
 icon: lucide/scale
+tags:
+  - Legal
+  - Sources
 ---
 
 # Credits and licenses

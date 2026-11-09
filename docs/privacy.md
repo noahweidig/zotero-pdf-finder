@@ -1,5 +1,8 @@
 ---
 icon: lucide/lock
+tags:
+  - Privacy
+  - Sources
 ---
 
 # Privacy and data

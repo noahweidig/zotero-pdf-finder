@@ -1,5 +1,8 @@
 ---
 icon: lucide/settings
+tags:
+  - Settings
+  - Sources
 ---
 
 # Settings

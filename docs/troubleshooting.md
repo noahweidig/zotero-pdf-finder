@@ -1,5 +1,8 @@
 ---
 icon: lucide/life-buoy
+tags:
+  - Help
+  - PDFs
 ---
 
 # Troubleshooting

@@ -1,5 +1,10 @@
 ---
 icon: lucide/mouse-pointer-click
+tags:
+  - Getting started
+  - PDFs
+  - Retractions
+  - Metadata
 ---
 
 # Use it

@@ -1,5 +1,8 @@
 ---
 icon: lucide/plug
+tags:
+  - Advanced
+  - Settings
 ---
 
 # Local write-back API
