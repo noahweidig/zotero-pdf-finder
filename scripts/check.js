@@ -62,7 +62,7 @@ const referencedFiles = [
 	'icons/zotpdf-16.svg',
 	'preferences.xhtml',
 	'preferences.js',
-		'LICENSE-FULLVAHTI',
+		'LICENSE-APACHE',
 	'LICENSE-LUCIDE',
 	'NOTICE'
 ];

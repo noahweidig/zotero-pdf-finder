@@ -23,7 +23,8 @@ prefs.js               default preference values (extensions.zotero.zotpdf.*)
 src/plugin.js          lifecycle, ZotPDF submenus, preference pane, progress UI
 src/openalex-client.js OpenAlex HTTP client: batching, auth, rate limits
 src/finder.js          item matching and the OpenAlex source (links, hosted, publisher pages)
-src/fullvahti.js       engine: PDF chain, retraction and metadata checks, tags, write-back
+src/engine.js          engine: PDF chain, retraction and metadata checks, tags, write-back
+src/sources.js         extra free sources (Europe PMC, Semantic Scholar, CORE, ...)
 preferences.xhtml/.js  settings pane
 locale/en-US/*.ftl     menu, progress and error strings
 test/                  node --test unit tests for the engine and the OpenAlex fallback
@@ -31,13 +32,12 @@ docs/                  documentation site sources; scripts/build-docs.js builds 
 update.json            update manifest Zotero polls (written by the release workflow)
 ```
 
-`src/fullvahti.js` is derived from [FullVahti](https://github.com/heidihelena/fullvahti)
-(Apache-2.0). The object name `FullVahti` is kept so the file stays diffable against
-upstream; everything user-visible says ZotPDF.
+`src/engine.js` contains Apache-2.0 licensed code (see `LICENSE-APACHE` and `NOTICE`); keep those
+files and the file header when you change it.
 
 ## How the PDF chain works
 
-`FullVahti.run()` handles each item: extract DOI/PMID/PMCID, then `resolveOA()` tries
+`ZotPDF.Engine.run()` handles each item: extract DOI/PMID/PMCID, then `resolveOA()` tries
 Unpaywall, PubMed Central (OA subset, Europe PMC fallback), and finally the OpenAlex
 fallback from `ZotPDF.Finder.fallbackFor(item)`. That returns open-access links, an
 optional OpenAlex-hosted download, and an optional publisher-page step through Zotero's

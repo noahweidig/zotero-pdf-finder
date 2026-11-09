@@ -1,6 +1,6 @@
 /*
  * ZotPDF — OpenAlex API client.
- * Based on OpenAlex PDF Finder, Copyright (c) 2026 Littview Inc. — MIT. See LICENSE.
+ * Portions derived from MIT- and Apache-2.0-licensed works; see LICENSE, LICENSE-APACHE and NOTICE.
  *
  * Two hosts are involved:
  *   api.openalex.org      metadata; works without a key (small daily credit

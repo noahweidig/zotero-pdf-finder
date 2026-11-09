@@ -5,30 +5,25 @@
  * ZotPDF engine: PDF lookup pipeline, retraction check, citation-metadata check
  * and the local write-back endpoint.
  *
- * Derived from FullVahti (https://github.com/heidihelena/fullvahti,
- * Copyright 2026 Heidi Andersén / Vahtian, Apache-2.0; see LICENSE-FULLVAHTI and
- * NOTICE). Modified for ZotPDF: the PDF lookup also uses OpenAlex (open-access
- * links, optional OpenAlex-hosted full text, optional publisher pages, title
- * matching for items without identifiers); menus, progress UI and settings moved
- * to ZotPDF; no report note is written when finding PDFs; preferences live under
- * extensions.zotero.zotpdf.*. The internal object name FullVahti is kept so the
- * engine stays diffable against upstream.
+ * Portions derived from an Apache-2.0-licensed work; see LICENSE-APACHE and NOTICE.
+ * Modified for ZotPDF: additional PDF sources, one progress UI, tags only (no
+ * report note) when finding PDFs, preferences under extensions.zotero.zotpdf.*.
  *
- * PDF lookup order per item: Unpaywall, PubMed Central (OA subset), then OpenAlex.
- * Each item is tagged fulltext:pdf-found / fulltext:pdf-missing / fulltext:check-needed.
+ * PDF lookup order per item: Unpaywall, PubMed Central, then the extra sources in
+ * src/sources.js, then OpenAlex. Each item is tagged fulltext:pdf-found,
+ * fulltext:pdf-missing or fulltext:check-needed.
  *
- * Write-back: a token-guarded endpoint on Zotero's local server so CiteVahti's
- * gated write-back can add/remove tags. Default OFF, previewable (dryRun),
- * restricted to an allowlisted tag namespace, audited, and reversible via
- * /fullvahti/undo (path kept for CiteVahti compatibility).
+ * Write-back: a token-guarded endpoint on Zotero's local server so external tools
+ * can add or remove tags. Default off, previewable (dryRun), restricted to an
+ * allowlisted tag namespace, audited, and reversible via /zotpdf/undo.
  *
  * Where data goes: Zotero metadata is read locally. Each item's DOI/PMID/title,
- * plus the contact email where an API asks for it, is sent to Unpaywall, NCBI,
- * Europe PMC and OpenAlex, and for the retraction and metadata checks to NCBI and
- * Crossref. Resolved PDF URLs are fetched from their host sites without the email.
+ * plus the contact email where an API asks for it, is sent to the lookup services
+ * named in Settings. Resolved PDF URLs are fetched from their host sites without
+ * the email.
  */
 
-var FullVahti = {
+ZotPDF.Engine = {
 	id: null,
 	version: null,
 	rootURI: null,
@@ -59,10 +54,10 @@ var FullVahti = {
 		mismatch: "citation:mismatch",
 		check: "citation:check-needed",
 	},
-	// Writeback (CiteVahti) may only touch tags in the Vahtian namespace. Tags
+	// Write-back may only touch tags in these namespaces. Tags
 	// outside these prefixes are refused, so a leaked token can't write arbitrary
 	// tags into someone's library.
-	ALLOWED_TAG_PREFIXES: ["cite:", "fulltext:", "retraction:", "citation:", "GRADE:", "RoB2:", "ROBINS-I:", "Quality:"],
+	ALLOWED_TAG_PREFIXES: ["zotpdf:", "fulltext:", "retraction:", "citation:", "GRADE:", "RoB2:", "ROBINS-I:", "Quality:"],
 	// Every applied writeback is recorded here (a JSON array, newest last) so each
 	// change is auditable and undoable. Bounded so the log can't grow without limit.
 	AUDIT_PREF: "auditLog",
@@ -187,7 +182,7 @@ var FullVahti = {
 	async prefTestConnection() {
 		try {
 			let xhr = await Zotero.HTTP.request("GET",
-				"http://127.0.0.1:23119/fullvahti/ping",
+				"http://127.0.0.1:23119/zotpdf/ping",
 				{ responseType: "json", timeout: 5000, successCodes: false });
 			let d = (xhr && xhr.response) || {};
 			let tokenSet = !!this.getPref("writebackToken");
@@ -196,8 +191,8 @@ var FullVahti = {
 				+ "Write-back enabled: " + (d.writeback ? "yes" : "no — tick the box above") + "\n"
 				+ "Token set: " + (tokenSet ? "yes" : "no — click “Generate new token”") + "\n\n"
 				+ (d.writeback && tokenSet
-					? "Ready: give the token to CiteVahti."
-					: "Finish the two steps above, then CiteVahti can connect."));
+					? "Ready: give the token to the tool."
+					: "Finish the two steps above, then the tool can connect."));
 		}
 		catch (e) {
 			this.log("prefTestConnection: " + e);
@@ -220,6 +215,7 @@ var FullVahti = {
 		let good = { find: ["found"], retraction: ["none"], citation: ["ok"] }[kind];
 		let label = r => {
 			if (r.reason) return r.reason;
+			if (r.status === "found" && r.via) return "PDF attached (" + r.via + ")";
 			return { found: "PDF attached", missing: "No open-access copy", check: "Needs a look",
 				retracted: "⚠ Retracted", none: "No retraction recorded", ok: "Looks right",
 				incomplete: "Missing fields", mismatch: "Doesn’t match Crossref" }[r.status] || r.status;
@@ -267,7 +263,7 @@ var FullVahti = {
 	},
 
 	async runForTag(window) {
-		let tag = this.getPref("triggerTag") || "cite:closer-look";
+		let tag = this.getPref("triggerTag") || "zotpdf";
 		let s = new Zotero.Search();
 		s.libraryID = Zotero.Libraries.userLibraryID;
 		s.addCondition("tag", "is", tag);
@@ -353,7 +349,10 @@ var FullVahti = {
 					}
 					else {
 						let noIDs = !doi && !pmid && !pmcid;
-						let res = await this.resolveOA(doi, pmid, pmcid, email, this.openAlexFallback(item));
+						let landings = [];
+						let sources = this.extraSources(item, { doi, pmid, pmcid, email, landings });
+						let res = await this.resolveOA(doi, pmid, pmcid, email,
+							this.openAlexFallback(item, landings), sources, landings);
 						if (noIDs && res.status !== "found") {
 							res = { status: "check", reason: "no DOI, PMID, or PMCID on the item"
 								+ (res.reason ? "; " + res.reason : "") };
@@ -363,6 +362,7 @@ var FullVahti = {
 						row.source = res.source || "";
 						row.license = res.license || "";
 						row.oaStatus = res.oaStatus || "";
+						row.via = res.via || "";
 						if (res.status === "found" && !res.attached) {
 							await this.attachPDF(item, res.bytes, res.source);
 						}
@@ -428,7 +428,7 @@ var FullVahti = {
 	},
 
 	async runRetractionForTag(window) {
-		let tag = this.getPref("triggerTag") || "cite:closer-look";
+		let tag = this.getPref("triggerTag") || "zotpdf";
 		let s = new Zotero.Search();
 		s.libraryID = Zotero.Libraries.userLibraryID;
 		s.addCondition("tag", "is", tag);
@@ -734,7 +734,7 @@ var FullVahti = {
 	},
 
 	async runCitationCheckForTag(window) {
-		let tag = this.getPref("triggerTag") || "cite:closer-look";
+		let tag = this.getPref("triggerTag") || "zotpdf";
 		let s = new Zotero.Search();
 		s.libraryID = Zotero.Libraries.userLibraryID;
 		s.addCondition("tag", "is", tag);
@@ -953,7 +953,7 @@ var FullVahti = {
 	},
 
 	// -----------------------------------------------------------------
-	// Identifier extraction (ported from vahtian_fulltext.py)
+	// Identifier extraction
 	// -----------------------------------------------------------------
 	normalizeDOI(doi) {
 		doi = (doi || "").trim()
@@ -1021,16 +1021,18 @@ var FullVahti = {
 	},
 
 	// Paced GET that resolves on any status (we inspect it ourselves).
-	async fetch(url, responseType) {
+	async fetch(url, responseType, headers) {
 		await this.politePause();
-		return Zotero.HTTP.request("GET", url, {
+		let options = {
 			responseType,
 			timeout: this.HTTP_TIMEOUT,
 			successCodes: false,
-		});
+		};
+		if (headers) options.headers = headers;
+		return Zotero.HTTP.request("GET", url, options);
 	},
 
-	fetchJSON(url) { return this.fetch(url, "json"); },
+	fetchJSON(url, headers) { return this.fetch(url, "json", headers); },
 	fetchText(url) { return this.fetch(url, "text"); },
 
 	// Pure: judge whether a downloaded byte buffer is a real OA PDF rather than an
@@ -1091,54 +1093,70 @@ var FullVahti = {
 		return bytes;
 	},
 
-	/**
-	 * Query the PMC OA Web Service — the approved interface to the PMC Open
-	 * Access Subset. Being in PMC is NOT a download permission; only OA-subset
-	 * records may be fetched automatically, and this service is how you ask.
-	 * Returns { isOA, pdfURL?, license?, error? }.
-	 */
-	// Read attribute `name` from a single XML tag string, tolerating either
-	// quote style and surrounding whitespace — NCBI's serialization varies.
-	xmlAttr(tag, name) {
-		let m = tag.match(new RegExp(name + "\\s*=\\s*\"([^\"]*)\"", "i"))
-			|| tag.match(new RegExp(name + "\\s*=\\s*'([^']*)'", "i"));
-		return m ? m[1] : null;
+	waybackEnabled() {
+		let v = this.getPref("source.wayback");
+		return v === undefined || v === null ? true : !!v;
 	},
 
-	async pmcOALookup(pmcid) {
+	// Download a PDF from a link some source vouches for as free to read. If the
+	// link is dead, retry the Internet Archive's copy of that same URL.
+	async downloadOA(url) {
+		let bytes = await this.downloadPDF(url);
+		if (bytes || !this.waybackEnabled()) return bytes;
 		try {
-			let xhr = await this.fetchText(
-				"https://www.ncbi.nlm.nih.gov/pmc/utils/oa/oa.fcgi?id=" + encodeURIComponent(pmcid)
-			);
-			if (xhr.status !== 200) return { isOA: false, error: "HTTP " + xhr.status };
-			let xml = xhr.responseText || "";
-			let errTag = xml.match(/<error\b[^>]*>/i);
-			if (errTag) {
-				let code = this.xmlAttr(errTag[0], "code") || "unknown";
-				if (/idIsNotOpenAccess|idDoesNotExist/i.test(code)) return { isOA: false };
-				return { isOA: false, error: code };
+			let xhr = await this.fetchJSON("https://archive.org/wayback/available?url=" + encodeURIComponent(url));
+			let snap = xhr.status === 200 && xhr.response && xhr.response.archived_snapshots
+				&& xhr.response.archived_snapshots.closest;
+			if (snap && snap.available && snap.url) {
+				// "if_" asks for the raw file without the archive toolbar
+				let archived = snap.url.replace(/^http:/i, "https:").replace(/\/web\/(\d+)\//, "/web/$1if_/");
+				return await this.downloadPDF(archived);
 			}
-			let recTag = xml.match(/<record\b[^>]*>/i);
-			let license = (recTag && this.xmlAttr(recTag[0], "license")) || "";
-			let pdfURL = null;
-			let linkRe = /<link\b[^>]*>/gi;
-			let m;
-			while ((m = linkRe.exec(xml))) {
-				if ((this.xmlAttr(m[0], "format") || "").toLowerCase() === "pdf") {
-					let href = this.xmlAttr(m[0], "href");
-					if (href) {
-						// The OA service often hands out FTP links; NCBI serves the
-						// same tree over HTTPS, so upgrade the scheme for NCBI hosts.
-						pdfURL = href.replace(/^ftp:\/\/(ftp[\w.-]*\.ncbi\.nlm\.nih\.gov)\//i,
-							"https://$1/");
-						break;
-					}
-				}
-			}
-			return { isOA: true, pdfURL, license };
 		}
 		catch (e) {
-			this.log("pmc-oa error: " + e);
+			this.log("wayback error: " + e);
+		}
+		return null;
+	},
+
+	PMC_S3: "https://pmc-oa-opendata.s3.amazonaws.com/",
+
+	// Turn the dataset's s3:// URL (md5 query included) into a plain https URL
+	pmcS3ToHTTPS(url) {
+		let m = String(url || "").match(/^s3:\/\/pmc-oa-opendata\/([^?]+)/);
+		return m ? this.PMC_S3 + m[1] : null;
+	},
+
+	// The PMC Open Access Web Service was retired, so ask the PMC cloud dataset: list
+	// the article's versions, read each version's JSON metadata, and take the best
+	// one that has a PDF (published version before author manuscript).
+	// Returns { isOA, pdfURL?, license?, error? }.
+	async pmcOALookup(pmcid) {
+		try {
+			let id = String(pmcid).toUpperCase();
+			let list = await this.fetchText(
+				this.PMC_S3 + "?list-type=2&delimiter=%2F&prefix=" + encodeURIComponent(id + ".")
+			);
+			if (list.status !== 200) return { isOA: false, error: "HTTP " + list.status };
+			let versions = [...(list.responseText || "").matchAll(/<Prefix>(PMC\d+\.(\d+))\/<\/Prefix>/g)]
+				.map(m => ({ prefix: m[1], version: parseInt(m[2], 10) }))
+				.sort((a, b) => b.version - a.version);
+			if (!versions.length) return { isOA: false };
+
+			let records = [];
+			for (let v of versions.slice(0, 4)) {
+				let xhr = await this.fetchJSON(this.PMC_S3 + v.prefix + "/" + v.prefix + ".json");
+				if (xhr.status === 200 && xhr.response) records.push(xhr.response);
+			}
+			if (!records.length) return { isOA: false, error: "no metadata for " + id };
+			let withPDF = records.filter(r => this.pmcS3ToHTTPS(r.pdf_url))
+				.sort((a, b) => (a.is_manuscript ? 1 : 0) - (b.is_manuscript ? 1 : 0));
+			if (!withPDF.length) return { isOA: true, pdfURL: null, license: records[0].license_code || "" };
+			return { isOA: true, pdfURL: this.pmcS3ToHTTPS(withPDF[0].pdf_url),
+				license: withPDF[0].license_code || "" };
+		}
+		catch (e) {
+			this.log("pmc dataset error: " + e);
 			return { isOA: false, error: String(e) };
 		}
 	},
@@ -1153,12 +1171,12 @@ var FullVahti = {
 	// optional publisher pages via Zotero's own downloader. It also resolves items
 	// that have no DOI/PMID/PMCID through strict title matching.
 	// Returns a function for resolveOA to call only after the other sources fail.
-	openAlexFallback(item) {
+	openAlexFallback(item, landings) {
 		let OA = typeof ZotPDF !== "undefined" ? ZotPDF : null;
 		if (!OA || !OA.Finder || !OA.Finder.fallbackFor) return null;
 		return async () => {
 			try {
-				return await OA.Finder.fallbackFor(item);
+				return await OA.Finder.fallbackFor(item, landings);
 			}
 			catch (e) {
 				this.log("openalex fallback error: " + e);
@@ -1167,11 +1185,47 @@ var FullVahti = {
 		};
 	},
 
-	async resolveOA(doi, pmid, pmcid, email, fallback) {
+	// The extra free sources (src/sources.js) as ordered steps, sharing one context so
+	// a DOI learned from a title match feeds the later steps. [] when unavailable.
+	extraSources(item, ids) {
+		let S = typeof ZotPDF !== "undefined" ? ZotPDF.Sources : null;
+		if (!S || !S.build) return [];
+		let title = "";
+		try { title = item.getField("title") || ""; } catch (e) { /* ignore */ }
+		return S.build({
+			doi: ids.doi || null,
+			pmid: ids.pmid || null,
+			pmcid: ids.pmcid || null,
+			title,
+			year: this.extractYear(item),
+			arxiv: this.extractArxiv(item),
+			email: ids.email,
+			landings: ids.landings,
+			get: (url, headers) => this.fetchJSON(url, headers),
+		});
+	},
+
+	extractYear(item) {
+		let date = "";
+		try { date = item.getField("date") || ""; } catch (e) { /* ignore */ }
+		let m = date.match(/\b(1[5-9]\d\d|20\d\d)\b/);
+		return m ? parseInt(m[1], 10) : null;
+	},
+
+	extractArxiv(item) {
+		let extra = "", url = "";
+		try { extra = item.getField("extra") || ""; } catch (e) { /* ignore */ }
+		try { url = item.getField("url") || ""; } catch (e) { /* ignore */ }
+		let m = extra.match(/^\s*arxiv\s*:\s*(\S+)/im) || url.match(/arxiv\.org\/(?:abs|pdf)\/(\S+?)(?:v\d+)?(?:\.pdf)?$/i);
+		return m ? m[1].replace(/v\d+$/i, "") : null;
+	},
+
+	async resolveOA(doi, pmid, pmcid, email, fallback, sources, landings) {
 		let sawError = false;
 		let reason = "";
 		let oaStatus = "";
 		let join = (a, b) => (a ? a + "; " + b : b);
+		let tried = new Set(); // every PDF URL already attempted for this item
 
 		if (doi) {
 			try {
@@ -1200,11 +1254,19 @@ var FullVahti = {
 								candidates.push({ url: u, license: loc.license || "" });
 							}
 						}
+						if (landings) {
+							for (let loc of locs) {
+								if (loc && !loc.url_for_pdf && loc.url_for_landing_page) {
+									landings.push(loc.url_for_landing_page);
+								}
+							}
+						}
 						for (let c of candidates) {
-							let bytes = await this.downloadPDF(c.url);
+							tried.add(c.url);
+							let bytes = await this.downloadOA(c.url);
 							if (bytes) {
 								return { status: "found", bytes, source: c.url,
-									license: c.license, oaStatus };
+									license: c.license, oaStatus, via: "Unpaywall" };
 							}
 						}
 						if (candidates.length) {
@@ -1231,10 +1293,11 @@ var FullVahti = {
 			}
 		}
 
-		if (pmid && !pmcid) {
+		if ((pmid || doi) && !pmcid) {
+			let byDOI = !pmid;
 			try {
 				let xhr = await this.fetchJSON(
-					"https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/?ids=" + encodeURIComponent(pmid)
+					"https://pmc.ncbi.nlm.nih.gov/tools/idconv/api/v1/articles/?ids=" + encodeURIComponent(pmid || doi)
 					+ "&format=json&tool=zotpdf&email=" + encodeURIComponent(email)
 				);
 				if (xhr.status === 200 && xhr.response && xhr.response.records) {
@@ -1242,9 +1305,9 @@ var FullVahti = {
 						if (rec.pmcid) { pmcid = rec.pmcid; break; }
 					}
 					// Confirmed absence — distinct from a lookup that failed.
-					if (!pmcid) reason = join(reason, "PMID has no PubMed Central record");
+					if (!pmcid && !byDOI) reason = join(reason, "PMID has no PubMed Central record");
 				}
-				else {
+				else if (!byDOI) {
 					// Don't let a transient lookup failure masquerade as "no PMC
 					// record" — flag it for a manual look (check) instead of missing.
 					sawError = true;
@@ -1255,8 +1318,11 @@ var FullVahti = {
 			}
 			catch (e) {
 				this.log("idconv error: " + e);
-				sawError = true;
-				reason = join(reason, "PubMed Central ID lookup failed");
+				// A DOI-only lookup is a bonus; the other sources still run
+				if (!byDOI) {
+					sawError = true;
+					reason = join(reason, "PubMed Central ID lookup failed");
+				}
 			}
 		}
 
@@ -1264,41 +1330,70 @@ var FullVahti = {
 			let oa = await this.pmcOALookup(pmcid);
 			if (oa.error) {
 				sawError = true;
-				reason = join(reason, "PMC OA service problem (" + oa.error + ")");
+				reason = join(reason, "PMC dataset problem (" + oa.error + ")");
 			}
 			else if (!oa.isOA) {
 				reason = join(reason,
-					`in PMC (${pmcid}) but not in the open-access subset — request via your library`);
+					`in PMC (${pmcid}) but not in its open dataset — request via your library`);
 			}
-			else {
-				if (oa.pdfURL) {
-					let bytes = await this.downloadPDF(oa.pdfURL);
-					if (bytes) {
-						return { status: "found", bytes, source: oa.pdfURL,
-							license: oa.license || "", oaStatus };
-					}
-				}
-				// OA-subset membership is confirmed, so Europe PMC's PDF for the
-				// same record is fair game as a fallback route.
-				let epmc = `https://www.ebi.ac.uk/europepmc/webservices/rest/${pmcid}/fullTextPDF`;
-				let bytes = await this.downloadPDF(epmc);
+			else if (oa.pdfURL) {
+				let bytes = await this.downloadPDF(oa.pdfURL);
 				if (bytes) {
-					return { status: "found", bytes, source: epmc,
-						license: oa.license || "", oaStatus };
+					return { status: "found", bytes, source: oa.pdfURL,
+						license: oa.license || "", oaStatus, via: "PubMed Central" };
 				}
 				sawError = true;
-				reason = join(reason, `in the PMC OA subset (${pmcid}) but PDF download failed`);
+				reason = join(reason, `in the PMC dataset (${pmcid}) but PDF download failed`);
 			}
+			else {
+				reason = join(reason, `in the PMC dataset (${pmcid}) but without a PDF`);
+			}
+		}
+
+		// Extra free sources, in order; the first real PDF wins
+		let failedSources = [];
+		let listedBut = [];
+		for (let src of sources || []) {
+			try {
+				let out = await src.find();
+				let reliable = 0;
+				for (let loc of out.locations || []) {
+					if (tried.has(loc.url)) continue;
+					tried.add(loc.url);
+					let bytes = await this.downloadOA(loc.url);
+					if (bytes) {
+						return { status: "found", bytes, source: loc.url,
+							license: loc.license || "", oaStatus, via: src.label };
+					}
+					if (!loc.guess) reliable++;
+				}
+				if (reliable) listedBut.push(src.label);
+			}
+			catch (e) {
+				this.log("source " + src.id + " error: " + e);
+				failedSources.push(src.label);
+			}
+		}
+		if (listedBut.length) {
+			sawError = true;
+			reason = join(reason, `${listedBut.join(", ")} listed a PDF link but it didn't download`);
+		}
+		if (failedSources.length) {
+			reason = join(reason, `${failedSources.join(", ")} unavailable`);
+			// Every extra source failing points at a network problem, not a missing paper
+			if (sources && failedSources.length === sources.length) sawError = true;
 		}
 
 		if (fallback) {
 			let oa = await fallback();
 			let tryLinks = async () => {
 				for (let loc of oa.locations || []) {
-					let bytes = await this.downloadPDF(loc.url);
+					if (tried.has(loc.url)) continue;
+					tried.add(loc.url);
+					let bytes = await this.downloadOA(loc.url);
 					if (bytes) {
 						return { status: "found", bytes, source: loc.url,
-							license: loc.license || "", oaStatus };
+							license: loc.license || "", oaStatus, via: "OpenAlex" };
 					}
 				}
 				return null;
@@ -1307,14 +1402,14 @@ var FullVahti = {
 				if (!oa.hosted) return null;
 				let h = await oa.hosted();
 				return h && h.bytes
-					? { status: "found", bytes: h.bytes, source: h.url, license: "", oaStatus }
+					? { status: "found", bytes: h.bytes, source: h.url, license: "", oaStatus, via: "OpenAlex (hosted)" }
 					: null;
 			};
 			let tryPublisher = async () => {
 				if (!oa.publisher) return null;
 				let source = await oa.publisher();
 				return source
-					? { status: "found", attached: true, source, license: "", oaStatus }
+					? { status: "found", attached: true, source, license: "", oaStatus, via: "Publisher page" }
 					: null;
 			};
 			let steps = oa.preferHosted
@@ -1480,7 +1575,7 @@ var FullVahti = {
 	// Pure: render the audit log as a plain-text summary for a dialog. Newest first,
 	// most recent `limit` shown. Side-effect-free so it can be unit-tested.
 	formatAuditLog(log, limit) {
-		if (!log || !log.length) return "No CiteVahti write-backs have been recorded yet.";
+		if (!log || !log.length) return "No write-backs have been recorded yet.";
 		let n = limit || 30;
 		let shown = log.slice(-n).reverse();
 		let lines = shown.map(r => {
@@ -1500,14 +1595,14 @@ var FullVahti = {
 		let log = this.readAudit();
 		let text = this.formatAuditLog(log, 30);
 		if (!log.length) {
-			window.alert("ZotPDF — CiteVahti write-back audit log\n\n" + text);
+			window.alert("ZotPDF — write-back audit log\n\n" + text);
 			return;
 		}
 		// Offer to clear so the log can't accrete indefinitely; clearing is itself
 		// a deliberate, confirmed user action (never automatic).
 		let clear = Services.prompt.confirmEx(
 			window,
-			"ZotPDF — CiteVahti write-back audit log",
+			"ZotPDF — write-back audit log",
 			text,
 			Services.prompt.BUTTON_POS_0 * Services.prompt.BUTTON_TITLE_IS_STRING
 				+ Services.prompt.BUTTON_POS_1 * Services.prompt.BUTTON_TITLE_IS_STRING,
@@ -1528,14 +1623,14 @@ var FullVahti = {
 	},
 
 	// -----------------------------------------------------------------
-	// WriteVahti — gated local writeback endpoint for CiteVahti.
+	// Gated local write-back endpoint for external tools.
 	// Default OFF. Local server only (127.0.0.1:23119). Token required.
 	//
 	// The safety invariant (no silent Zotero writes) is enforced here, not by
 	// the caller: a write is only applied when writeback is enabled AND the token
 	// matches AND every tag is in the allowlist. Callers preview first with
 	// dryRun:true (nothing is written), and any applied write is recorded to the
-	// audit log and reversible through /fullvahti/undo.
+	// audit log and reversible through /zotpdf/undo.
 	// -----------------------------------------------------------------
 	tokenOK(data) {
 		let token = this.getPref("writebackToken");
@@ -1551,20 +1646,20 @@ var FullVahti = {
 			supportedMethods: ["GET"],
 			// MUST be async: in Zotero 9 a synchronous init() that returns an array
 			// never responds (the request hangs forever), while an async init
-			// resolves correctly. The /fullvahti/tag handler is already async — match it.
+			// resolves correctly. The /zotpdf/tag handler is already async — match it.
 			init: async function () {
 				return [200, "application/json", JSON.stringify({
-					plugin: "fullvahti",
+					plugin: "zotpdf",
 					version: self.version,
 					writeback: !!self.getPref("writebackEnabled"),
-					// Let CiteVahti detect the safety features it can rely on.
+					// Let clients detect the safety features it can rely on.
 					capabilities: { dryRun: true, audit: true, undo: true },
 					allowedTagPrefixes: self.ALLOWED_TAG_PREFIXES,
-					endpoints: ["/fullvahti/ping", "/fullvahti/tag", "/fullvahti/audit", "/fullvahti/undo"],
+					endpoints: ["/zotpdf/ping", "/zotpdf/tag", "/zotpdf/audit", "/zotpdf/undo"],
 				})];
 			},
 		};
-		Zotero.Server.Endpoints["/fullvahti/ping"] = Ping;
+		Zotero.Server.Endpoints["/zotpdf/ping"] = Ping;
 
 		function Tag() {}
 		Tag.prototype = {
@@ -1582,12 +1677,12 @@ var FullVahti = {
 				if (!data.itemKey || (!Array.isArray(data.add) && !Array.isArray(data.remove))) {
 					return deny(400, "expected { token, itemKey, add: [tags] and/or remove: [tags], dryRun?: bool }");
 				}
-				// Only Vahtian-namespace tags may be written, even with a valid token.
+				// Only allowlisted tags may be written, even with a valid token.
 				let bad = [...(data.add || []), ...(data.remove || [])]
 					.map(String)
 					.filter(t => !self.tagAllowed(t));
 				if (bad.length) {
-					return deny(400, "tags must use an allowed Vahtian prefix ("
+					return deny(400, "tags must use an allowed prefix ("
 						+ self.ALLOWED_TAG_PREFIXES.join(", ") + "); rejected: " + bad.join(", "));
 				}
 				let item = Zotero.Items.getByLibraryAndKey(Zotero.Libraries.userLibraryID, data.itemKey);
@@ -1622,7 +1717,7 @@ var FullVahti = {
 				})];
 			},
 		};
-		Zotero.Server.Endpoints["/fullvahti/tag"] = Tag;
+		Zotero.Server.Endpoints["/zotpdf/tag"] = Tag;
 
 		function Audit() {}
 		Audit.prototype = {
@@ -1651,7 +1746,7 @@ var FullVahti = {
 				})];
 			},
 		};
-		Zotero.Server.Endpoints["/fullvahti/audit"] = Audit;
+		Zotero.Server.Endpoints["/zotpdf/audit"] = Audit;
 
 		function Undo() {}
 		Undo.prototype = {
@@ -1712,13 +1807,13 @@ var FullVahti = {
 				})];
 			},
 		};
-		Zotero.Server.Endpoints["/fullvahti/undo"] = Undo;
+		Zotero.Server.Endpoints["/zotpdf/undo"] = Undo;
 	},
 
 	unregisterEndpoints() {
-		delete Zotero.Server.Endpoints["/fullvahti/ping"];
-		delete Zotero.Server.Endpoints["/fullvahti/tag"];
-		delete Zotero.Server.Endpoints["/fullvahti/audit"];
-		delete Zotero.Server.Endpoints["/fullvahti/undo"];
+		delete Zotero.Server.Endpoints["/zotpdf/ping"];
+		delete Zotero.Server.Endpoints["/zotpdf/tag"];
+		delete Zotero.Server.Endpoints["/zotpdf/audit"];
+		delete Zotero.Server.Endpoints["/zotpdf/undo"];
 	},
 };

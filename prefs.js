@@ -25,7 +25,7 @@ pref("extensions.zotero.zotpdf.titleSearchFallback", true);
 pref("extensions.zotero.zotpdf.saveWorkIDToExtra", false);
 
 // Tag that selects the batch for the Tools-menu runs.
-pref("extensions.zotero.zotpdf.triggerTag", "cite:closer-look");
+pref("extensions.zotero.zotpdf.triggerTag", "zotpdf");
 
 // After retraction and metadata checks, save one report note. (PDF runs never write notes.)
 pref("extensions.zotero.zotpdf.reportNote", true);
@@ -33,7 +33,22 @@ pref("extensions.zotero.zotpdf.reportNote", true);
 // Milliseconds to pause between items and requests.
 pref("extensions.zotero.zotpdf.delayMs", 400);
 
-// CiteVahti write-back (advanced; off by default).
+// Local write-back API for external tools (advanced; off by default).
 pref("extensions.zotero.zotpdf.writebackEnabled", false);
 pref("extensions.zotero.zotpdf.writebackToken", "");
 pref("extensions.zotero.zotpdf.auditLog", "");
+
+// Extra free sources (see src/sources.js). Each can be switched off.
+pref("extensions.zotero.zotpdf.source.europepmc", true);
+pref("extensions.zotero.zotpdf.source.semanticscholar", true);
+pref("extensions.zotero.zotpdf.source.crossref", true);
+pref("extensions.zotero.zotpdf.source.core", true);
+pref("extensions.zotero.zotpdf.source.openaire", true);
+pref("extensions.zotero.zotpdf.source.preprints", true);
+pref("extensions.zotero.zotpdf.source.hal", true);
+pref("extensions.zotero.zotpdf.source.doaj", true);
+// Retry dead open-access links through the Internet Archive's copies.
+pref("extensions.zotero.zotpdf.source.wayback", true);
+// Optional keys: raise rate limits.
+pref("extensions.zotero.zotpdf.coreKey", "");
+pref("extensions.zotero.zotpdf.semanticScholarKey", "");

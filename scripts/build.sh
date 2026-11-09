@@ -17,13 +17,11 @@ zip -r -q -X "$XPI" \
 	prefs.js \
 	preferences.xhtml \
 	preferences.js \
-	preferences-fullvahti.xhtml \
-	preferences-fullvahti.js \
 	src \
 	locale \
 	icons \
 	LICENSE \
-	LICENSE-FULLVAHTI \
+	LICENSE-APACHE \
 	LICENSE-LUCIDE \
 	NOTICE \
 	--exclude '*.DS_Store'

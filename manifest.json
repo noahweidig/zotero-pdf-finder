@@ -4,7 +4,7 @@
 	"version": "0.5.0",
 	"description": "Find open-access PDFs for your Zotero items from Unpaywall, PubMed Central and OpenAlex, check for retractions, and audit citation metadata.",
 	"homepage_url": "https://github.com/noahweidig/ZotPDF",
-	"author": "Noah Weidig (includes work by Littview and Heidi Anders\u00e9n)",
+	"author": "Noah Weidig",
 	"icons": {
 		"48": "icons/zotpdf-48.svg",
 		"96": "icons/zotpdf-96.svg"

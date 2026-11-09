@@ -1,6 +1,6 @@
 /*
  * ZotPDF — preference pane script.
- * Based on OpenAlex PDF Finder, Copyright (c) 2026 Littview Inc. — MIT. See LICENSE.
+ * Portions derived from MIT- and Apache-2.0-licensed works; see LICENSE, LICENSE-APACHE and NOTICE.
  *
  * Runs in the preferences window, which has Zotero but not the plugin sandbox, so the
  * key check is implemented here. The write-back and batch buttons are wired by the

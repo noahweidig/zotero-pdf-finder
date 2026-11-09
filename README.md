@@ -14,12 +14,15 @@ imported 300 references and need the PDFs behind them, and a clean reference lis
 
 ## What it does
 
-- **Find PDFs.** Per item, the first source that returns a real PDF wins:
-  Unpaywall, PubMed Central (OA subset), OpenAlex open-access links, OpenAlex-hosted
-  full text (optional, needs a free key), then publisher pages through Zotero's own
-  downloader (optional). Matches by DOI, PMID, arXiv ID or exact title.
-  Each item is tagged `fulltext:pdf-found`, `fulltext:pdf-missing` or
-  `fulltext:check-needed`. **No notes are created.**
+- **Find PDFs.** Per item, the first of 14 free sources to return a real PDF wins:
+  Unpaywall, PubMed Central, Europe PMC, Semantic Scholar, Crossref (open-licensed links
+  and linked preprints), CORE, OpenAIRE, preprint servers and repositories (arXiv, bioRxiv,
+  medRxiv, OSF, PeerJ, Zenodo, Figshare), HAL, DOAJ, OpenAlex (links and optional hosted
+  full text), then free-to-read pages through Zotero's downloader. Dead links are retried
+  through the Internet Archive. Matches by DOI, PMID, arXiv ID or exact title; the result
+  column names the source that worked. Every source has a checkbox. Each item is tagged
+  `fulltext:pdf-found`, `fulltext:pdf-missing` or `fulltext:check-needed`.
+  **No notes are created.**
 - **Check retractions.** PubMed plus Crossref (which carries the Retraction Watch
   database). Tags `retraction:retracted`, `retraction:none` or `retraction:check-needed`.
 - **Check citation metadata.** Compares each record with Crossref and flags missing
@@ -34,8 +37,8 @@ imported 300 references and need the PDFs behind them, and a clean reference lis
    (Firefox: right-click → **Save Link As…**.)
 2. In Zotero: **Tools → Plugins**, drag the file in (or ⚙ → **Install Plugin From File…**).
 
-No account, no API key, no restart. If you had OpenAlex PDF Finder or FullVahti
-installed, uninstall them first: ZotPDF replaces both.
+No account, no API key, no restart. If another PDF-finder plugin is installed,
+uninstall it first to avoid duplicate menus.
 
 ## Docs
 
@@ -53,13 +56,8 @@ DOIs, PMIDs, arXiv IDs and titles of the items you select go to the services abo
 your contact email where an API asks for one. Nothing is stored elsewhere; no accounts,
 no analytics. See [privacy](https://noahweidig.github.io/ZotPDF/privacy.html).
 
-## Credits and licenses
+## Licenses
 
-ZotPDF combines [OpenAlex PDF Finder](https://github.com/Littview/zotero-openalex-pdf)
-by Littview Inc. (MIT) and [FullVahti](https://github.com/heidihelena/fullvahti) by
-Heidi Andersén / Vahtian (Apache-2.0), with a [Lucide](https://lucide.dev) icon (ISC).
-Licenses: [`LICENSE`](LICENSE), [`LICENSE-FULLVAHTI`](LICENSE-FULLVAHTI),
-[`LICENSE-LUCIDE`](LICENSE-LUCIDE), [`NOTICE`](NOTICE).
-
-Data comes from [OpenAlex](https://openalex.org), Unpaywall, PubMed Central, Europe PMC
-and Crossref. Developers: see [CONTRIBUTING.md](CONTRIBUTING.md).
+ZotPDF includes code under the MIT and Apache-2.0 licenses and a Lucide icon (ISC):
+[`LICENSE`](LICENSE), [`LICENSE-APACHE`](LICENSE-APACHE), [`NOTICE`](NOTICE),
+[`LICENSE-LUCIDE`](LICENSE-LUCIDE). Developers: see [CONTRIBUTING.md](CONTRIBUTING.md).

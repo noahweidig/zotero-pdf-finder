@@ -1,6 +1,6 @@
 /*
  * ZotPDF — plugin lifecycle, menus, preferences and progress UI.
- * Based on OpenAlex PDF Finder, Copyright (c) 2026 Littview Inc. — MIT. See LICENSE.
+ * Portions derived from MIT- and Apache-2.0-licensed works; see LICENSE, LICENSE-APACHE and NOTICE.
  */
 
 var ZotPDF = {
@@ -12,9 +12,6 @@ var ZotPDF = {
 	PREF_BRANCH: 'zotpdf.',
 	QUEUE_ID: 'zotpdf',
 	API_KEY_URL: 'https://openalex.org/settings/api',
-
-	// The PDF/retraction/metadata engine (src/fullvahti.js); set by bootstrap.js
-	Engine: null,
 
 	_l10n: null,
 	_prefPaneID: null,
@@ -106,7 +103,6 @@ var ZotPDF = {
 			}
 		}
 		this._queues = {};
-		this.Engine = null;
 		this._l10n = null;
 	},
 

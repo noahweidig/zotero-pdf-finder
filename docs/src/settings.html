@@ -5,14 +5,17 @@
   <tr><th>Setting</th><th>Default</th><th>What it does</th></tr>
   <tr><td><strong>Contact email</strong></td><td>asked once</td><td>Sent to Unpaywall, NCBI, Europe PMC, Crossref and OpenAlex (its "polite pool"). Never to us.</td></tr>
   <tr><td><strong>OpenAlex API key</strong></td><td>none</td><td>Free at <a href="https://openalex.org/settings/api">openalex.org/settings/api</a>. Needed only for hosted downloads. <em>Test</em> shows remaining credits.</td></tr>
-  <tr><td><strong>Use OpenAlex-hosted full text</strong></td><td>on</td><td>Works only with a key.</td></tr>
+  <tr><td><strong>Europe PMC, Semantic Scholar, Crossref, CORE, OpenAIRE, preprint servers, HAL, DOAJ</strong></td><td>on</td><td>One checkbox each. Unpaywall, PubMed Central and OpenAlex links are always on. See <a href="how-it-works.html">How it works</a>.</td></tr>
+  <tr><td><strong>Retry dead links through the Internet Archive</strong></td><td>on</td><td>Looks up the Archive's copy of any open-access link that fails.</td></tr>
+  <tr><td><strong>CORE key, Semantic Scholar key</strong></td><td>none</td><td>Optional. Only raise rate limits; both services answer without one for small batches.</td></tr>
+  <tr><td><strong>Use OpenAlex-hosted full text</strong></td><td>on</td><td>Works only with an OpenAlex key.</td></tr>
   <tr><td><strong>Try hosted copy before links</strong></td><td>off</td><td>Spends your daily allowance first. Off keeps it for items that need it.</td></tr>
-  <tr><td><strong>Publisher pages as a last resort</strong></td><td>on</td><td>Hands remaining links to Zotero's downloader. Turn off for strictly open access.</td></tr>
+  <tr><td><strong>Publisher pages as a last resort</strong></td><td>on</td><td>Hands free-to-read pages and remaining links to Zotero's downloader. Turn off for strictly open access.</td></tr>
   <tr><td><strong>Look up items without a DOI or PMID by title</strong></td><td>on</td><td>Strict title match plus a year check.</td></tr>
   <tr><td><strong>Record OpenAlex work ID in Extra</strong></td><td>off</td><td>Writes <code>OpenAlex: W123…</code> to the item.</td></tr>
-  <tr><td><strong>Batch tag</strong></td><td><code>cite:closer-look</code></td><td>Selects the items for the Tools-menu runs and the Batch buttons.</td></tr>
+  <tr><td><strong>Batch tag</strong></td><td><code>zotpdf</code></td><td>Selects the items for the Tools-menu runs and the Batch buttons.</td></tr>
   <tr><td><strong>Report note after checks</strong></td><td>on</td><td>One note per retraction or metadata run. Never for PDF runs.</td></tr>
-  <tr><td><strong>CiteVahti write-back</strong></td><td>off</td><td>See <a href="citevahti.html">CiteVahti</a>.</td></tr>
+  <tr><td><strong>Local write-back API</strong></td><td>off</td><td>See <a href="writeback.html">Write-back</a>.</td></tr>
 </table>
 
 <h2>Hidden preferences</h2>

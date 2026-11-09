@@ -1,7 +1,7 @@
 /*
  * ZotPDF — find open-access PDFs, check retractions and citation metadata.
- * Based on OpenAlex PDF Finder (Littview Inc., MIT; see LICENSE) and FullVahti
- * (Heidi Andersén / Vahtian, Apache-2.0; see LICENSE-FULLVAHTI).
+ * Portions derived from MIT- and Apache-2.0-licensed works; see LICENSE,
+ * LICENSE-APACHE and NOTICE.
  *
  * Bootstrap entry points. Zotero loads this file into a privileged sandbox that
  * already provides Zotero, Services, Localization, IOUtils, PathUtils, fetch and
@@ -9,7 +9,6 @@
  */
 
 var ZotPDF;
-var FullVahti;
 
 function install() {}
 
@@ -19,12 +18,12 @@ async function startup({ id, version, rootURI }) {
 	Services.scriptloader.loadSubScript(rootURI + 'src/plugin.js');
 	Services.scriptloader.loadSubScript(rootURI + 'src/openalex-client.js');
 	Services.scriptloader.loadSubScript(rootURI + 'src/finder.js');
-	Services.scriptloader.loadSubScript(rootURI + 'src/fullvahti.js');
+	Services.scriptloader.loadSubScript(rootURI + 'src/sources.js');
+	Services.scriptloader.loadSubScript(rootURI + 'src/engine.js');
 
-	FullVahti.init({ id, version, rootURI });
-	ZotPDF.Engine = FullVahti;
+	ZotPDF.Engine.init({ id, version, rootURI });
 	await ZotPDF.init({ id, version, rootURI });
-	FullVahti.registerEndpoints();
+	ZotPDF.Engine.registerEndpoints();
 }
 
 function shutdown(_data, reason) {
@@ -32,16 +31,13 @@ function shutdown(_data, reason) {
 	if (reason === APP_SHUTDOWN) {
 		return;
 	}
-	if (FullVahti) {
+	if (ZotPDF) {
 		try {
-			FullVahti.unregisterEndpoints();
+			ZotPDF.Engine.unregisterEndpoints();
 		}
 		catch (e) {
 			Zotero.logError(e);
 		}
-		FullVahti = undefined;
-	}
-	if (ZotPDF) {
 		ZotPDF.shutdown();
 		ZotPDF = undefined;
 	}

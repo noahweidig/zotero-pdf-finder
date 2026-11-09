@@ -19,7 +19,7 @@ const PAGES = [
 	['how-it-works', 'How it works', 'How it works'],
 	['checks', 'Checks', 'Retraction and metadata checks'],
 	['settings', 'Settings', 'Settings'],
-	['citevahti', 'CiteVahti', 'CiteVahti write-back'],
+	['writeback', 'Write-back', 'Local write-back API'],
 	['privacy', 'Privacy', 'Privacy and data'],
 	['troubleshooting', 'Help', 'Troubleshooting'],
 	['about', 'About', 'Credits and licenses']

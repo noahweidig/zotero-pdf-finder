@@ -1,7 +1,7 @@
 {
 	"name": "zotpdf",
 	"version": "0.5.0",
-	"description": "Zotero plugin: open-access PDF finder (OpenAlex + FullVahti), retraction and citation checks",
+	"description": "Zotero plugin: find open-access PDFs from many free sources, check retractions and citation metadata",
 	"license": "MIT AND Apache-2.0",
 	"private": true,
 	"scripts": {

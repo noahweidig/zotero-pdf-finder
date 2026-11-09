@@ -4,13 +4,13 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { load, makeItem } = require("./helpers");
 
-// Build the /fullvahti/tag endpoint with given prefs and a target item, then
+// Build the /zotpdf/tag endpoint with given prefs and a target item, then
 // return a function that POSTs a body and yields [status, type, parsedBody].
 function tagEndpoint({ prefs = {}, item } = {}) {
 	const itemsByKey = item ? { [item.key]: item } : {};
 	const { fv, sandbox } = load({ prefs, itemsByKey });
 	fv.registerEndpoints();
-	const Ctor = sandbox.Zotero.Server.Endpoints["/fullvahti/tag"];
+	const Ctor = sandbox.Zotero.Server.Endpoints["/zotpdf/tag"];
 	return async (body) => {
 		const ep = new Ctor();
 		const [code, type, json] = await ep.init({ data: body });
@@ -20,15 +20,15 @@ function tagEndpoint({ prefs = {}, item } = {}) {
 
 test("rejects when writeback is disabled (default)", async () => {
 	const post = tagEndpoint({ prefs: {} });
-	const [code, , body] = await post({ token: "t", itemKey: "K", add: ["cite:x"] });
+	const [code, , body] = await post({ token: "t", itemKey: "K", add: ["zotpdf:x"] });
 	assert.equal(code, 403);
 	assert.equal(body.ok, false);
 });
 
 test("rejects a missing or wrong token", async () => {
 	const post = tagEndpoint({ prefs: { "extensions.zotero.zotpdf.writebackEnabled": true, "extensions.zotero.zotpdf.writebackToken": "secret" } });
-	assert.equal((await post({ token: "nope", itemKey: "K", add: ["cite:x"] }))[0], 403);
-	assert.equal((await post({ itemKey: "K", add: ["cite:x"] }))[0], 403);
+	assert.equal((await post({ token: "nope", itemKey: "K", add: ["zotpdf:x"] }))[0], 403);
+	assert.equal((await post({ itemKey: "K", add: ["zotpdf:x"] }))[0], 403);
 });
 
 test("rejects a malformed body", async () => {
@@ -37,11 +37,11 @@ test("rejects a malformed body", async () => {
 	assert.equal(code, 400);
 });
 
-test("allowlist is exactly the documented Vahtian namespace", () => {
+test("allowlist is exactly the documented namespace", () => {
 	// Locks the code to the README's "Allowlisted tags only" list so the two
 	// can't drift. Update both together if the namespace ever changes.
 	const { fv } = load();
-	const documented = ["cite:", "fulltext:", "retraction:", "citation:", "GRADE:", "RoB2:", "ROBINS-I:", "Quality:"];
+	const documented = ["zotpdf:", "fulltext:", "retraction:", "citation:", "GRADE:", "RoB2:", "ROBINS-I:", "Quality:"];
 	assert.deepEqual([...fv.ALLOWED_TAG_PREFIXES].sort(), [...documented].sort());
 	for (const p of documented) {
 		assert.ok(fv.tagAllowed(p + "sample"), `${p} should be allowed`);
@@ -50,15 +50,15 @@ test("allowlist is exactly the documented Vahtian namespace", () => {
 	assert.ok(!fv.tagAllowed("GRADEISH:high")); // prefix must match, not merely start similar
 });
 
-test("rejects tags outside the Vahtian namespace", async () => {
+test("rejects tags outside the allowlist", async () => {
 	const item = makeItem({}, { key: "K" });
 	const post = tagEndpoint({
 		prefs: { "extensions.zotero.zotpdf.writebackEnabled": true, "extensions.zotero.zotpdf.writebackToken": "secret" },
 		item,
 	});
-	const [code, , body] = await post({ token: "secret", itemKey: "K", add: ["cite:ok", "evil:tag"] });
+	const [code, , body] = await post({ token: "secret", itemKey: "K", add: ["zotpdf:ok", "evil:tag"] });
 	assert.equal(code, 400);
-	assert.match(body.error, /allowed Vahtian prefix/);
+	assert.match(body.error, /allowed prefix/);
 	assert.match(body.error, /evil:tag/);
 	// nothing was written
 	assert.equal(item._tags.size, 0);
@@ -75,7 +75,7 @@ test("rejects an empty-string tag", async () => {
 
 test("404 when the item key is unknown", async () => {
 	const post = tagEndpoint({ prefs: { "extensions.zotero.zotpdf.writebackEnabled": true, "extensions.zotero.zotpdf.writebackToken": "secret" } });
-	const [code] = await post({ token: "secret", itemKey: "MISSING", add: ["cite:x"] });
+	const [code] = await post({ token: "secret", itemKey: "MISSING", add: ["zotpdf:x"] });
 	assert.equal(code, 404);
 });
 
@@ -87,12 +87,12 @@ test("applies allowed add/remove with a valid token", async () => {
 	});
 	const [code, , body] = await post({
 		token: "secret", itemKey: "K",
-		add: ["cite:closer-look", "GRADE:high", "RoB2:low", "ROBINS-I:moderate", "Quality:good"],
+		add: ["zotpdf:closer-look", "GRADE:high", "RoB2:low", "ROBINS-I:moderate", "Quality:good"],
 		remove: ["fulltext:pdf-missing"],
 	});
 	assert.equal(code, 200);
 	assert.equal(body.ok, true);
-	assert.ok(item._tags.has("cite:closer-look"));
+	assert.ok(item._tags.has("zotpdf:closer-look"));
 	assert.ok(item._tags.has("GRADE:high"));
 	assert.ok(!item._tags.has("fulltext:pdf-missing"));
 });
@@ -119,32 +119,32 @@ function writebackHarness(item) {
 	return {
 		fv,
 		prefStore,
-		tag: (body) => call("/fullvahti/tag", { data: body })(),
-		undo: (body) => call("/fullvahti/undo", { data: body })(),
-		audit: (query) => call("/fullvahti/audit", { query })(),
+		tag: (body) => call("/zotpdf/tag", { data: body })(),
+		undo: (body) => call("/zotpdf/undo", { data: body })(),
+		audit: (query) => call("/zotpdf/audit", { query })(),
 	};
 }
 
 test("dryRun previews the effective change without writing", async () => {
-	const item = makeItem({}, { key: "K", tags: ["cite:closer-look"] });
+	const item = makeItem({}, { key: "K", tags: ["zotpdf:closer-look"] });
 	const h = writebackHarness(item);
 	const [code, body] = await h.tag({
 		token: "secret", itemKey: "K", dryRun: true,
-		add: ["GRADE:high", "cite:closer-look"], // second one already present
+		add: ["GRADE:high", "zotpdf:closer-look"], // second one already present
 		remove: ["fulltext:pdf-missing"],        // not present
 	});
 	assert.equal(code, 200);
 	assert.equal(body.dryRun, true);
 	assert.deepEqual(body.preview.willAdd, ["GRADE:high"]);
 	assert.deepEqual(body.preview.willRemove, []);       // wasn't present
-	assert.deepEqual(body.preview.alreadyPresent, ["cite:closer-look"]);
+	assert.deepEqual(body.preview.alreadyPresent, ["zotpdf:closer-look"]);
 	assert.deepEqual(body.preview.alreadyAbsent, ["fulltext:pdf-missing"]);
 	// Nothing was written, and no audit record was created.
 	assert.ok(!item._tags.has("GRADE:high"));
 	assert.equal(h.prefStore["extensions.zotero.zotpdf.auditLog"], undefined);
 });
 
-test("an applied write creates an audit record retrievable via /fullvahti/audit", async () => {
+test("an applied write creates an audit record retrievable via /zotpdf/audit", async () => {
 	const item = makeItem({}, { key: "K", tags: [] });
 	const h = writebackHarness(item);
 	const [code, body] = await h.tag({ token: "secret", itemKey: "K", add: ["GRADE:high"] });
@@ -205,7 +205,7 @@ test("undo rejects unknown / wrong-token / disabled", async () => {
 
 test("formatAuditLog renders records newest-first with undo markers", () => {
 	const { fv } = load({});
-	assert.match(fv.formatAuditLog([]), /No CiteVahti write-backs/);
+	assert.match(fv.formatAuditLog([]), /No write-backs/);
 	const log = [
 		{ ts: "t1", itemKey: "A", added: ["GRADE:high"], removed: ["fulltext:pdf-missing"], undone: true },
 		{ ts: "t2", itemKey: "A", added: ["fulltext:pdf-missing"], removed: ["GRADE:high"], undoOf: "x" },

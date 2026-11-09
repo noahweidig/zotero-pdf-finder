@@ -1,6 +1,6 @@
 /*
  * ZotPDF — matching items to OpenAlex works and turning them into PDF sources.
- * Based on OpenAlex PDF Finder, Copyright (c) 2026 Littview Inc. — MIT. See LICENSE.
+ * Portions derived from MIT- and Apache-2.0-licensed works; see LICENSE, LICENSE-APACHE and NOTICE.
  */
 
 ZotPDF.Finder = {
@@ -24,12 +24,12 @@ ZotPDF.Finder = {
 	 *   preferHosted  try hosted before the links
 	 * Lookup errors propagate to the caller.
 	 */
-	async fallbackFor(item) {
+	async fallbackFor(item, landings = []) {
 		let work = (await this._matchWorks([item], null)).get(item.id) || this._arXivWork(item);
-		if (!work) {
+		if (!work && !landings.length) {
 			return { locations: [] };
 		}
-		if (ZotPDF.getPref('saveWorkIDToExtra')) {
+		if (work && ZotPDF.getPref('saveWorkIDToExtra')) {
 			try {
 				await this._saveWorkID(item, work);
 			}
@@ -38,32 +38,37 @@ ZotPDF.Finder = {
 			}
 		}
 
-		let candidates = [work.best_oa_location, ...(work.locations || [])];
-		let arXiv = this._arXivWork(item);
-		if (arXiv && arXiv !== work) {
-			candidates.push(...arXiv.locations);
-		}
-		let seen = new Set();
 		let ranked = [];
-		for (let loc of candidates) {
-			if (!loc || !loc.is_oa || !loc.pdf_url || seen.has(loc.pdf_url)) {
-				continue;
+		let canHosted = false;
+		if (work) {
+			let candidates = [work.best_oa_location, ...(work.locations || [])];
+			let arXiv = this._arXivWork(item);
+			if (arXiv && arXiv !== work) {
+				candidates.push(...arXiv.locations);
 			}
-			seen.add(loc.pdf_url);
-			let rank = this.VERSION_RANK[loc.version];
-			ranked.push({ url: loc.pdf_url, license: loc.license || '', rank: rank === undefined ? 3 : rank });
-		}
-		ranked.sort((a, b) => a.rank - b.rank);
+			let seen = new Set();
+			for (let loc of candidates) {
+				if (!loc || !loc.is_oa || !loc.pdf_url || seen.has(loc.pdf_url)) {
+					continue;
+				}
+				seen.add(loc.pdf_url);
+				let rank = this.VERSION_RANK[loc.version];
+				ranked.push({ url: loc.pdf_url, license: loc.license || '', rank: rank === undefined ? 3 : rank });
+			}
+			ranked.sort((a, b) => a.rank - b.rank);
 
-		let api = ZotPDF.API;
-		let canHosted = !!ZotPDF.getPref('useHostedContent') && !!ZotPDF.getAPIKey()
-			&& !api.keyRejected && api.hasHostedPDF(work) && !!api.hostedPDFURL(work);
+			let api = ZotPDF.API;
+			canHosted = !!ZotPDF.getPref('useHostedContent') && !!ZotPDF.getAPIKey()
+				&& !api.keyRejected && api.hasHostedPDF(work) && !!api.hostedPDFURL(work);
+		}
 
 		return {
 			locations: ranked.slice(0, this.MAX_RESOLVERS).map(({ url, license }) => ({ url, license })),
 			preferHosted: !!ZotPDF.getPref('preferHostedContent'),
 			hosted: canHosted ? () => this._downloadHosted(work) : null,
-			publisher: ZotPDF.getPref('tryPublisherPages') ? () => this._attachFromPublisher(item, work) : null
+			publisher: ZotPDF.getPref('tryPublisherPages')
+				? () => this._attachFromPublisher(item, work, landings)
+				: null
 		};
 	},
 
@@ -84,8 +89,15 @@ ZotPDF.Finder = {
 	 * uses the browser session and translators, so licensed access through your
 	 * institution works. Returns a source label when a file got attached.
 	 */
-	async _attachFromPublisher(item, work) {
-		let resolvers = this._buildURLResolvers(work, this._arXivWork(item));
+	async _attachFromPublisher(item, work, landings = []) {
+		let resolvers = this._buildURLResolvers(work || {}, this._arXivWork(item));
+		let known = new Set(resolvers.map(r => r.url || r.pageURL));
+		for (let page of landings) {
+			if (!known.has(page) && resolvers.length < this.MAX_RESOLVERS + 6) {
+				known.add(page);
+				resolvers.push({ pageURL: page, accessMethod: 'Free-to-read page' });
+			}
+		}
 		if (!resolvers.length) {
 			return null;
 		}

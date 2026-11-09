@@ -1,6 +1,6 @@
 <!--
 	ZotPDF — preference pane.
-	Based on OpenAlex PDF Finder (Littview Inc., MIT) and FullVahti (Heidi Andersén, Apache-2.0).
+	Portions derived from MIT- and Apache-2.0-licensed works; see LICENSE, LICENSE-APACHE and NOTICE.
 
 	Loaded as a XUL fragment: XUL is the default namespace, HTML lives under html:.
 -->
@@ -42,34 +42,61 @@
 		<groupbox>
 			<label><html:h2>Where ZotPDF looks for PDFs</html:h2></label>
 			<description class="description">
-				Every item goes through the same chain and stops at the first PDF it can
-				download: 1. Unpaywall, 2. PubMed Central (open-access subset),
-				3. OpenAlex open-access links, 4. OpenAlex-hosted full text, 5. publisher
-				pages through Zotero's downloader. Steps 4 and 5 are optional.
+				Each item goes down this list and stops at the first PDF it can download.
+				Everything is free to read; switch off any source you don't want.
 			</description>
 
-			<checkbox label="Use OpenAlex-hosted full text (needs an API key)" native="true"
+			<checkbox label="Unpaywall and PubMed Central open-access subset (always on)" native="true" disabled="true" checked="true"/>
+			<checkbox label="Europe PMC: author manuscripts and free-to-read copies" native="true"
+					preference="extensions.zotero.zotpdf.source.europepmc"/>
+			<checkbox label="Semantic Scholar" native="true"
+					preference="extensions.zotero.zotpdf.source.semanticscholar"/>
+			<checkbox label="Crossref: publisher links on openly licensed articles, and linked preprints" native="true"
+					preference="extensions.zotero.zotpdf.source.crossref"/>
+			<checkbox label="CORE: institutional repositories" native="true"
+					preference="extensions.zotero.zotpdf.source.core"/>
+			<checkbox label="OpenAIRE" native="true"
+					preference="extensions.zotero.zotpdf.source.openaire"/>
+			<checkbox label="Preprint servers and data repositories: arXiv, bioRxiv, medRxiv, OSF, PeerJ, Zenodo, Figshare" native="true"
+					preference="extensions.zotero.zotpdf.source.preprints"/>
+			<checkbox label="HAL" native="true"
+					preference="extensions.zotero.zotpdf.source.hal"/>
+			<checkbox label="DOAJ: open-access journals" native="true"
+					preference="extensions.zotero.zotpdf.source.doaj"/>
+			<checkbox label="OpenAlex open-access links" native="true" disabled="true" checked="true"/>
+			<checkbox label="Retry dead links through the Internet Archive's copies" native="true"
+					preference="extensions.zotero.zotpdf.source.wayback"/>
+			<checkbox label="OpenAlex-hosted full text (needs an OpenAlex key)" native="true"
 					preference="extensions.zotero.zotpdf.useHostedContent"/>
-			<description class="description">
-				About 60 million open-access works. A free key covers roughly 100 of these
-				downloads a day; links from publishers and repositories never count against it.
-			</description>
-
 			<checkbox label="Try the OpenAlex-hosted copy before open-access links" native="true"
 					preference="extensions.zotero.zotpdf.preferHostedContent"/>
-
-			<checkbox label="Last resort: try publisher pages through Zotero's downloader" native="true"
+			<checkbox label="Last resort: publisher pages through Zotero's downloader" native="true"
 					preference="extensions.zotero.zotpdf.tryPublisherPages"/>
 			<description class="description">
-				Uses your own browser session and institutional access, the same as
-				Zotero's built-in "Find Available PDF". Turn off to stay strictly open access.
+				The last option uses your own browser session and institutional access, like
+				Zotero's built-in "Find Available PDF". Turn it off to stay strictly open access.
+			</description>
+
+			<hbox align="center">
+				<label value="CORE key (optional):" control="zotpdf-corekey"/>
+				<html:input type="password" id="zotpdf-corekey" class="flex-1"
+						preference="extensions.zotero.zotpdf.coreKey"/>
+			</hbox>
+			<hbox align="center">
+				<label value="Semantic Scholar key (optional):" control="zotpdf-s2key"/>
+				<html:input type="password" id="zotpdf-s2key" class="flex-1"
+						preference="extensions.zotero.zotpdf.semanticScholarKey"/>
+			</hbox>
+			<description class="description">
+				Keys only raise rate limits. Both services work without one for small batches.
 			</description>
 
 			<checkbox label="Look up items without a DOI or PMID by title" native="true"
 					preference="extensions.zotero.zotpdf.titleSearchFallback"/>
 			<description class="description">
 				Accepted only when the titles match exactly apart from punctuation and the
-				years differ by at most one.
+				years differ by at most one. A title match can also supply a DOI for the
+				later sources.
 			</description>
 
 			<checkbox label="Record the matched OpenAlex work ID in the Extra field" native="true"
@@ -112,14 +139,14 @@
 		</groupbox>
 
 		<groupbox>
-			<label><html:h2>CiteVahti write-back (advanced)</html:h2></label>
+			<label><html:h2>Local write-back API (advanced)</html:h2></label>
 			<description class="description">
-				Lets CiteVahti on this computer write status tags into your library through
+				Lets another program on this computer write tags into your library through
 				a token-guarded local endpoint. Off by default. Only allowlisted tags can be
 				written, every write is previewed and recorded in a local audit log, and
 				each can be undone.
 			</description>
-			<checkbox id="zotpdf-writeback" label="Allow CiteVahti to write tags (local only, token required)" native="true"
+			<checkbox id="zotpdf-writeback" label="Allow external tools to write tags (local only, token required)" native="true"
 					preference="extensions.zotero.zotpdf.writebackEnabled"/>
 			<hbox align="center">
 				<label value="Token:" control="zotpdf-token-display"/>
@@ -134,8 +161,8 @@
 		</groupbox>
 
 		<description class="description" style="margin-top: 1.5em">
-			ZotPDF combines OpenAlex PDF Finder by Littview (MIT) and FullVahti by
-			Heidi Andersén / Vahtian (Apache-2.0). Free and open source.
+			ZotPDF is free and open source. Licenses and notices are listed in the plugin folder
+			(LICENSE, LICENSE-APACHE, NOTICE).
 		</description>
 	</vbox>
 </vbox>

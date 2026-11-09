@@ -6,16 +6,16 @@
 </div>
 
 <div class="grid">
-  <div class="card"><h3>Find PDFs</h3><p>One pass through Unpaywall, PubMed Central and OpenAlex. Matches by DOI, PMID, arXiv ID or exact title. Each item is tagged <span class="tag">fulltext:pdf-found</span>, <span class="tag">pdf-missing</span> or <span class="tag">check-needed</span>. No notes are created.</p></div>
+  <div class="card"><h3>Find PDFs</h3><p>One pass through 14 free sources: Unpaywall, PubMed Central, Europe PMC, Semantic Scholar, CORE, preprint servers, OpenAlex and more. Matches by DOI, PMID, arXiv ID or exact title. Each item is tagged <span class="tag">fulltext:pdf-found</span>, <span class="tag">pdf-missing</span> or <span class="tag">check-needed</span>. No notes are created.</p></div>
   <div class="card"><h3>Check retractions</h3><p>Reads PubMed and Crossref, which carries the Retraction Watch database. Catches the mass retractions PubMed doesn't index.</p></div>
   <div class="card"><h3>Audit metadata</h3><p>Compares each record with Crossref and flags missing fields and mismatches. A mismatch often means the wrong DOI is attached. Nothing is edited.</p></div>
 </div>
 
 <h2>The PDF chain</h2>
 <div class="chain">
-  <span>Already has a PDF?</span><i>→</i><span>Unpaywall</span><i>→</i><span>PubMed Central OA subset</span><i>→</i><span>OpenAlex links</span><i>→</i><span>OpenAlex hosted</span><i>→</i><span>Publisher page</span>
+  <span>Unpaywall</span><i>→</i><span>PubMed Central</span><i>→</i><span>Europe PMC</span><i>→</i><span>Semantic Scholar</span><i>→</i><span>Crossref</span><i>→</i><span>CORE</span><i>→</i><span>OpenAIRE</span><i>→</i><span>Preprint servers</span><i>→</i><span>HAL</span><i>→</i><span>DOAJ</span><i>→</i><span>OpenAlex</span><i>→</i><span>Internet Archive</span><i>→</i><span>Free-to-read pages</span>
 </div>
-<p>The first source that returns a real PDF wins. The last two are optional. <a href="how-it-works.html">Details</a>.</p>
+<p>The first source that returns a real PDF wins, and the result column names it. A dead link is retried through the Internet Archive. Every source can be switched off. <a href="how-it-works.html">Details</a>.</p>
 
 <h2>One menu</h2>
 <p>Right-click any reference and choose <strong>ZotPDF</strong>:</p>

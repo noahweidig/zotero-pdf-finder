@@ -63,3 +63,12 @@ test("a found-by-Zotero result is not attached a second time", async () => {
 	assert.equal(attached, 0);
 	assert.ok(a._tags.has("fulltext:pdf-found"));
 });
+
+test("the progress row names the source that supplied the PDF", async () => {
+	const { fv } = runner();
+	fv.resolveOA = async () => ({ status: "found", source: "https://core/x.pdf", license: "", oaStatus: "", via: "CORE" });
+	const rows = [];
+	fv.openProgress = () => ({ cancelled: false, begin() {}, end(item, row) { rows.push(row); }, summary() {}, close() {} });
+	await fv.run([makeItem({ DOI: "10.5/v" }, { key: "V", id: 7 })], { alert() {} });
+	assert.equal(rows[0].via, "CORE");
+});
