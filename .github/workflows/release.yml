@@ -36,6 +36,7 @@ jobs:
           fi
 
       - run: npm run lint
+      - run: npm test
 
       - name: Build XPI
         id: build
@@ -45,17 +46,17 @@ jobs:
         run: node scripts/update-manifest.js "${{ steps.build.outputs.xpi }}"
 
       # A copy without the version in its name, so the README can link to
-      # releases/latest/download/zotero-openalex-pdf.xpi and never go stale.
+      # releases/latest/download/zotpdf.xpi and never go stale.
       # update.json keeps pointing at the versioned file, whose hash it records.
       - name: Add a stable-name copy
-        run: cp "${{ steps.build.outputs.xpi }}" build/zotero-openalex-pdf.xpi
+        run: cp "${{ steps.build.outputs.xpi }}" build/zotpdf.xpi
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             ${{ steps.build.outputs.xpi }}
-            build/zotero-openalex-pdf.xpi
+            build/zotpdf.xpi
           generate_release_notes: true
 
       - name: Commit update.json

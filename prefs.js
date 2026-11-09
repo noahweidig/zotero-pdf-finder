@@ -28,3 +28,13 @@ pref("extensions.zotero.openalexpdf.saveWorkIDToExtra", false);
 
 // Milliseconds to pause between items, to stay well under OpenAlex's rate limit.
 pref("extensions.zotero.openalexpdf.requestDelay", 250);
+
+// FullVahti defaults (read via Zotero.Prefs.get('extensions.fullvahti.<name>', true)).
+pref("extensions.fullvahti.email", "");
+pref("extensions.fullvahti.triggerTag", "cite:closer-look");
+pref("extensions.fullvahti.reportNote", true);
+pref("extensions.fullvahti.openURLResolver", "");
+pref("extensions.fullvahti.delayMs", 400);
+pref("extensions.fullvahti.writebackEnabled", false);
+pref("extensions.fullvahti.writebackToken", "");
+pref("extensions.fullvahti.auditLog", "");

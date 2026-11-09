@@ -15,7 +15,7 @@ let failures = [];
 const fail = message => failures.push(message);
 
 // 1. Syntax
-const sources = ['bootstrap.js', 'preferences.js', 'prefs.js']
+const sources = ['bootstrap.js', 'preferences.js', 'preferences-fullvahti.js', 'prefs.js']
 	.concat(fs.readdirSync(path.join(root, 'src')).map(f => path.join('src', f)));
 for (const file of sources) {
 	try {
@@ -58,9 +58,15 @@ for (const id of referenced) {
 // 4. Files referenced from the manifest and from registration calls exist
 const referencedFiles = [
 	...Object.values(manifest.icons),
-	'icons/openalex-16.svg',
+	'icons/zotpdf-16.svg',
 	'preferences.xhtml',
-	'preferences.js'
+	'preferences.js',
+	'preferences-fullvahti.xhtml',
+	'preferences-fullvahti.js',
+	'icons/zotpdf-48.svg',
+	'LICENSE-FULLVAHTI',
+	'LICENSE-LUCIDE',
+	'NOTICE'
 ];
 for (const file of referencedFiles) {
 	if (!fs.existsSync(path.join(root, file))) {
