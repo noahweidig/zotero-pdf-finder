@@ -1,11 +1,12 @@
 {
-	"name": "zotero-openalex-pdf",
-	"version": "0.3.1",
-	"description": "Zotero plugin that finds and attaches open-access PDFs via OpenAlex",
-	"license": "MIT",
+	"name": "zotpdf",
+	"version": "0.4.0",
+	"description": "Zotero plugin: open-access PDF finder (OpenAlex + FullVahti), retraction and citation checks",
+	"license": "MIT AND Apache-2.0",
 	"private": true,
 	"scripts": {
 		"build": "bash scripts/build.sh",
-		"lint": "node scripts/check.js"
+		"lint": "node scripts/check.js",
+		"test": "node --test"
 	}
 }

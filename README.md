@@ -1,4 +1,23 @@
-# OpenAlex PDF Finder for Zotero
+# ZotPDF
+
+Zotero plugin combining two projects in one `zotpdf.xpi`:
+
+- **OpenAlex PDF Finder** (Littview, MIT): right-click **Find PDF via OpenAlex**; matches by DOI, PMID, arXiv ID or strict title, with optional OpenAlex-hosted full text.
+- **FullVahti** (Heidi Andersén / Vahtian, Apache-2.0, [source](https://github.com/heidihelena/fullvahti)): **FullVahti** menu items. Finds OA PDFs via Unpaywall and PubMed Central, tags each item (`fulltext:*`), writes one report note, checks retractions (PubMed + Crossref/Retraction Watch) and citation metadata (Crossref), and keeps the audited CiteVahti write-back endpoint.
+
+**How they connect:** FullVahti's PDF run tries Unpaywall, then PMC, then OpenAlex (open-access locations with a direct PDF link only; no paywalled pages, no credit-costing hosted downloads). Items with no DOI/PMID/PMCID get an OpenAlex title match instead of an automatic `check-needed`. Everything else is unchanged in each plugin.
+
+**Install:** download `zotpdf.xpi` from the latest release, then Zotero → Tools → Plugins → ⚙ → Install Plugin From File.
+
+> ZotPDF has its own add-on ID (`zotpdf@noahweidig`). Uninstall OpenAlex PDF Finder and FullVahti first, or you'll get duplicate menus.
+
+Build: `npm run build` (writes `build/zotpdf.xpi`). Checks: `npm run lint && npm test`.
+
+Licenses: MIT (`LICENSE`) for OpenAlex PDF Finder code; Apache-2.0 (`LICENSE-FULLVAHTI`, `NOTICE`) for `src/fullvahti.js`.
+
+---
+
+# OpenAlex PDF Finder for Zotero (upstream README)
 
 **Select references in Zotero, right-click, and get their PDFs attached — free, no account needed.**
 
@@ -10,7 +29,7 @@ Made for literature reviews: you've just imported 300 references from a database
 and you need the PDFs behind them.
 
 <p align="center">
-  <a href="https://github.com/Littview/zotero-openalex-pdf/releases/latest/download/zotero-openalex-pdf.xpi"><b>⬇ Download the plugin (.xpi)</b></a>
+  <a href="https://github.com/noahweidig/zotero-pdf-finder/releases/latest/download/zotpdf.xpi"><b>⬇ Download the plugin (.xpi)</b></a>
   &nbsp;·&nbsp; Works with Zotero 7, 8, 9 and 10 &nbsp;·&nbsp; Free and open source
 </p>
 
@@ -20,7 +39,7 @@ and you need the PDFs behind them.
 
 ## Install (1 minute)
 
-1. **Download** [`zotero-openalex-pdf.xpi`](https://github.com/Littview/zotero-openalex-pdf/releases/latest/download/zotero-openalex-pdf.xpi).
+1. **Download** [`zotpdf.xpi`](https://github.com/noahweidig/zotero-pdf-finder/releases/latest/download/zotpdf.xpi).
    > Using **Firefox**? Right-click the link and choose **Save Link As…**. A plain click
    > makes Firefox try to install it as a Firefox add-on, which won't work.
 2. In Zotero, open **Tools → Plugins**.

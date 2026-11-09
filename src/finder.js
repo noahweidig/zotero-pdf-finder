@@ -157,6 +157,37 @@ ZoteroOpenAlex.Finder = {
 		ZoteroOpenAlex.log(`Finished: ${JSON.stringify(counts)}`);
 	},
 
+	/**
+	 * For FullVahti: open-access PDF links for one item. Only locations OpenAlex marks
+	 * open access with a direct PDF URL; no landing pages, no hosted (credit-costing)
+	 * downloads. Never throws on a plain miss.
+	 *
+	 * @return {Promise<{locations: {url: String, license: String}[]}>}
+	 */
+	async findOAPDFLocations(item) {
+		let work = (await this._matchWorks([item], null)).get(item.id) || this._arXivWork(item);
+		if (!work) {
+			return { locations: [] };
+		}
+		let candidates = [work.best_oa_location, ...(work.locations || [])];
+		let arXiv = this._arXivWork(item);
+		if (arXiv && arXiv !== work) {
+			candidates.push(...arXiv.locations);
+		}
+		let seen = new Set();
+		let ranked = [];
+		for (let loc of candidates) {
+			if (!loc || !loc.is_oa || !loc.pdf_url || seen.has(loc.pdf_url)) {
+				continue;
+			}
+			seen.add(loc.pdf_url);
+			let rank = this.VERSION_RANK[loc.version];
+			ranked.push({ url: loc.pdf_url, license: loc.license || '', rank: rank === undefined ? 3 : rank });
+		}
+		ranked.sort((a, b) => a.rank - b.rank);
+		return { locations: ranked.slice(0, this.MAX_RESOLVERS).map(({ url, license }) => ({ url, license })) };
+	},
+
 	//
 	// Item selection
 	//
