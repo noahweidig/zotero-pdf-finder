@@ -146,7 +146,7 @@ var ZotPDF = {
 			scripts: ['preferences.js'],
 			label: this.getString('zotpdf-prefs-title'),
 			image: 'icons/zotpdf-48.svg',
-			helpURL: 'https://noahweidig.github.io/ZotPDF/settings.html'
+			helpURL: 'https://noahweidig.github.io/zotpdf/settings/'
 		});
 	},
 

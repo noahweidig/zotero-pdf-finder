@@ -1,0 +1,51 @@
+/* Landing-page hero; everything else uses Zensical's defaults. */
+.zp-hero {
+  text-align: center;
+  padding: 3.5rem 1rem 2.5rem;
+  margin: -0.5rem -0.8rem 2rem;
+  border-radius: 1rem;
+  background:
+    radial-gradient(60rem 22rem at 50% -8rem, color-mix(in srgb, var(--md-primary-fg-color) 28%, transparent), transparent 70%),
+    linear-gradient(180deg, color-mix(in srgb, var(--md-primary-fg-color) 7%, transparent), transparent);
+}
+.zp-hero__badge {
+  display: inline-grid;
+  place-items: center;
+  width: 4.5rem;
+  height: 4.5rem;
+  margin-bottom: 0.6rem;
+  border-radius: 1.2rem;
+  color: var(--md-primary-bg-color);
+  background: var(--md-primary-fg-color);
+  box-shadow: 0 0.6rem 1.6rem color-mix(in srgb, var(--md-primary-fg-color) 38%, transparent);
+}
+.zp-hero__badge .twemoji svg { width: 2.4rem; height: 2.4rem; fill: none; stroke: currentColor; }
+.zp-hero h1 {
+  margin: 0.2rem 0 0.6rem;
+  font-size: clamp(2rem, 6vw, 3.4rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--md-default-fg-color);
+}
+.zp-hero p.zp-hero__lede {
+  max-width: 38rem;
+  margin: 0 auto 1.4rem;
+  font-size: 1.05rem;
+  color: var(--md-default-fg-color--light);
+}
+.zp-hero .md-button { margin: 0.25rem 0.2rem; }
+.zp-hero .md-button .twemoji { margin-inline-end: 0.35rem; }
+.zp-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: center; margin: 1.6rem auto 0; max-width: 44rem; }
+.zp-chips span {
+  padding: 0.15rem 0.65rem;
+  font-size: 0.72rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 2rem;
+  color: var(--md-default-fg-color--light);
+  background: var(--md-default-bg-color);
+}
+.zp-stats { display: flex; flex-wrap: wrap; justify-content: center; gap: 2rem; margin: 1.8rem 0 0; }
+.zp-stats div { min-width: 6rem; }
+.zp-stats strong { display: block; font-size: 1.7rem; line-height: 1.1; color: var(--md-typeset-a-color); }
+.zp-stats small { color: var(--md-default-fg-color--light); }

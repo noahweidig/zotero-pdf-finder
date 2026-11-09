@@ -6,8 +6,8 @@ testing and releasing; the user guide is in [README.md](README.md).
 ## Build
 
 ```bash
-git clone https://github.com/noahweidig/ZotPDF.git
-cd ZotPDF
+git clone https://github.com/noahweidig/zotpdf.git
+cd zotpdf
 npm run lint     # parses every source file, checks Fluent IDs and versions
 npm run build    # writes build/zotpdf-<version>.xpi
 ```
@@ -28,7 +28,7 @@ src/sources.js         extra free sources (Europe PMC, Semantic Scholar, CORE, .
 preferences.xhtml/.js  settings pane
 locale/en-US/*.ftl     menu, progress and error strings
 test/                  node --test unit tests for the engine and the OpenAlex fallback
-docs/                  documentation site sources; scripts/build-docs.js builds _site/
+docs/, zensical.toml   documentation site (Zensical)
 update.json            update manifest Zotero polls (written by the release workflow)
 ```
 
@@ -81,7 +81,7 @@ the pause in milliseconds between items and requests.
 Point Zotero at your working copy instead of installing the `.xpi`:
 
 ```bash
-echo -n "/absolute/path/to/ZotPDF" \
+echo -n "/absolute/path/to/zotpdf" \
   > "<zotero profile>/extensions/zotpdf@noahweidig"
 ```
 
@@ -127,9 +127,17 @@ await Zotero.ZotPDF.Engine.run(ZoteroPane.getSelectedItems(), window);
 
 ## Documentation site
 
-`docs/src/*.html` are page fragments, `docs/layout.html` is the shared frame. Build with
-`npm run docs` (writes `_site/`). The **Docs** workflow publishes it to GitHub Pages on
-every change under `docs/`; enable it once under Settings → Pages → Source: GitHub Actions.
+The docs are built with [Zensical](https://zensical.org): `zensical.toml` is the config and
+`docs/*.md` the pages (icons are the bundled Lucide set, e.g. `:lucide-file-down:`).
+
+```bash
+pip install zensical
+zensical serve          # live preview at http://localhost:8000
+zensical build --clean  # writes site/
+```
+
+The **Docs** workflow publishes to GitHub Pages on every change under `docs/` or
+`zensical.toml`; enable it once under Settings → Pages → Source: GitHub Actions.
 
 ## Translations
 

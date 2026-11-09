@@ -1,15 +1,13 @@
 name: Docs
 
-# Builds the documentation site (docs/ -> _site/) and publishes it to GitHub Pages.
+# Builds the docs with Zensical (zensical.toml + docs/) and publishes them to GitHub Pages.
 # One-time setup: repo Settings -> Pages -> Build and deployment -> Source: GitHub Actions.
 on:
   push:
     branches: [main]
     paths:
       - docs/**
-      - scripts/build-docs.js
-      - manifest.json
-      - icons/**
+      - zensical.toml
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -25,14 +23,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-python@v5
         with:
-          node-version: '20'
-      - run: npm run docs
+          python-version: 3.x
+      - run: pip install zensical
+      - run: zensical build --clean
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: _site
+          path: site
 
   deploy:
     needs: build

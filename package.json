@@ -1,6 +1,6 @@
 {
 	"name": "zotpdf",
-	"version": "0.5.0",
+	"version": "0.5.1",
 	"description": "Zotero plugin: find open-access PDFs from many free sources, check retractions and citation metadata",
 	"license": "MIT AND Apache-2.0",
 	"private": true,
@@ -8,6 +8,6 @@
 		"build": "bash scripts/build.sh",
 		"lint": "node scripts/check.js",
 		"test": "node --test",
-		"docs": "node scripts/build-docs.js"
+		"docs": "zensical build --clean"
 	}
 }
