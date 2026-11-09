@@ -27,8 +27,8 @@ pref("extensions.zotero.zotpdf.saveWorkIDToExtra", false);
 // Tag that selects the batch for the Tools-menu runs.
 pref("extensions.zotero.zotpdf.triggerTag", "zotpdf");
 
-// After retraction and metadata checks, save one report note. (PDF runs never write notes.)
-pref("extensions.zotero.zotpdf.reportNote", true);
+// After retraction and metadata checks, also save one report note. (PDF runs never write notes.)
+pref("extensions.zotero.zotpdf.reportNote", false);
 
 // Milliseconds to pause between items and requests.
 pref("extensions.zotero.zotpdf.delayMs", 400);
@@ -47,8 +47,18 @@ pref("extensions.zotero.zotpdf.source.openaire", true);
 pref("extensions.zotero.zotpdf.source.preprints", true);
 pref("extensions.zotero.zotpdf.source.hal", true);
 pref("extensions.zotero.zotpdf.source.doaj", true);
+pref("extensions.zotero.zotpdf.source.osti", true);
 // Retry dead open-access links through the Internet Archive's copies.
 pref("extensions.zotero.zotpdf.source.wayback", true);
 // Optional keys: raise rate limits.
 pref("extensions.zotero.zotpdf.coreKey", "");
 pref("extensions.zotero.zotpdf.semanticScholarKey", "");
+
+// Parallel workers for a PDF run, and a dry-run mode that attaches nothing.
+pref("extensions.zotero.zotpdf.concurrency", 3);
+pref("extensions.zotero.zotpdf.dryRun", false);
+// Remember "no open-access copy" for a day so re-runs skip the lookups.
+pref("extensions.zotero.zotpdf.useCache", true);
+pref("extensions.zotero.zotpdf.cache", "");
+// Fill an empty DOI field when a title match finds the DOI.
+pref("extensions.zotero.zotpdf.writeBackDOI", false);

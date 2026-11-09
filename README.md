@@ -7,17 +7,17 @@ adds retraction and metadata checks on top. Made for literature reviews: you've 
 imported 300 references and need the PDFs behind them, and a clean reference list.
 
 <p align="center">
-  <a href="https://github.com/noahweidig/ZotPDF/releases/latest/download/zotpdf.xpi"><b>⬇ Download zotpdf.xpi</b></a>
-  &nbsp;·&nbsp; <a href="https://noahweidig.github.io/ZotPDF/"><b>Documentation</b></a>
+  <a href="https://github.com/noahweidig/zotpdf/releases/latest/download/zotpdf.xpi"><b>⬇ Download zotpdf.xpi</b></a>
+  &nbsp;·&nbsp; <a href="https://noahweidig.github.io/zotpdf/"><b>Documentation</b></a>
   &nbsp;·&nbsp; Zotero 7+ &nbsp;·&nbsp; Free and open source
 </p>
 
 ## What it does
 
-- **Find PDFs.** Per item, the first of 14 free sources to return a real PDF wins:
+- **Find PDFs.** Per item, the first of 15 free sources to return a real PDF wins:
   Unpaywall, PubMed Central, Europe PMC, Semantic Scholar, Crossref (open-licensed links
   and linked preprints), CORE, OpenAIRE, preprint servers and repositories (arXiv, bioRxiv,
-  medRxiv, OSF, PeerJ, Zenodo, Figshare), HAL, DOAJ, OpenAlex (links and optional hosted
+  medRxiv, OSF, PeerJ, Zenodo, Figshare), HAL, DOAJ, OSTI, OpenAlex (links and optional hosted
   full text), then free-to-read pages through Zotero's downloader. Dead links are retried
   through the Internet Archive. Matches by DOI, PMID, arXiv ID or exact title; the result
   column names the source that worked. Every source has a checkbox. Each item is tagged
@@ -33,7 +33,7 @@ imported 300 references and need the PDFs behind them, and a clean reference lis
 
 ## Install
 
-1. Download [`zotpdf.xpi`](https://github.com/noahweidig/ZotPDF/releases/latest/download/zotpdf.xpi).
+1. Download [`zotpdf.xpi`](https://github.com/noahweidig/zotpdf/releases/latest/download/zotpdf.xpi).
    (Firefox: right-click → **Save Link As…**.)
 2. In Zotero: **Tools → Plugins**, drag the file in (or ⚙ → **Install Plugin From File…**).
 
@@ -42,19 +42,19 @@ uninstall it first to avoid duplicate menus.
 
 ## Docs
 
-Everything is on the documentation site: [install](https://noahweidig.github.io/ZotPDF/install.html),
-[usage](https://noahweidig.github.io/ZotPDF/usage.html),
-[how the PDF chain works](https://noahweidig.github.io/ZotPDF/how-it-works.html),
-[checks](https://noahweidig.github.io/ZotPDF/checks.html),
-[settings](https://noahweidig.github.io/ZotPDF/settings.html),
-[privacy](https://noahweidig.github.io/ZotPDF/privacy.html) and
-[troubleshooting](https://noahweidig.github.io/ZotPDF/troubleshooting.html).
+Everything is on the documentation site: [install](https://noahweidig.github.io/zotpdf/install/),
+[usage](https://noahweidig.github.io/zotpdf/usage/),
+[how the PDF chain works](https://noahweidig.github.io/zotpdf/how-it-works/),
+[checks](https://noahweidig.github.io/zotpdf/checks/),
+[settings](https://noahweidig.github.io/zotpdf/settings/),
+[privacy](https://noahweidig.github.io/zotpdf/privacy/) and
+[troubleshooting](https://noahweidig.github.io/zotpdf/troubleshooting/).
 
 ## Privacy
 
 DOIs, PMIDs, arXiv IDs and titles of the items you select go to the services above, with
 your contact email where an API asks for one. Nothing is stored elsewhere; no accounts,
-no analytics. See [privacy](https://noahweidig.github.io/ZotPDF/privacy.html).
+no analytics. See [privacy](https://noahweidig.github.io/zotpdf/privacy/).
 
 ## Licenses
 

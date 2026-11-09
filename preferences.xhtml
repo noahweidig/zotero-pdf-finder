@@ -63,6 +63,8 @@
 					preference="extensions.zotero.zotpdf.source.hal"/>
 			<checkbox label="DOAJ: open-access journals" native="true"
 					preference="extensions.zotero.zotpdf.source.doaj"/>
+			<checkbox label="OSTI: US Department of Energy reports" native="true"
+					preference="extensions.zotero.zotpdf.source.osti"/>
 			<checkbox label="OpenAlex open-access links" native="true" disabled="true" checked="true"/>
 			<checkbox label="Retry dead links through the Internet Archive's copies" native="true"
 					preference="extensions.zotero.zotpdf.source.wayback"/>
@@ -99,6 +101,9 @@
 				later sources.
 			</description>
 
+			<checkbox label="Fill in an empty DOI field when a title match finds the DOI" native="true"
+					preference="extensions.zotero.zotpdf.writeBackDOI"/>
+
 			<checkbox label="Record the matched OpenAlex work ID in the Extra field" native="true"
 					preference="extensions.zotero.zotpdf.saveWorkIDToExtra"/>
 		</groupbox>
@@ -119,12 +124,21 @@
 				<button id="zotpdf-retract-run" label="Check retractions"/>
 				<button id="zotpdf-citation-run" label="Check citation metadata"/>
 			</hbox>
-			<checkbox label="After retraction and metadata checks, save one report note" native="true"
-					preference="extensions.zotero.zotpdf.reportNote"/>
+			<hbox align="center">
+				<button id="zotpdf-export-run" label="Export missing PDFs (CSV)…"/>
+				<button id="zotpdf-cache-clear" label="Forget cached misses"/>
+			</hbox>
 			<description class="description">
 				Finding PDFs never creates notes. Each item gets a tag instead:
-				fulltext:pdf-found, fulltext:pdf-missing or fulltext:check-needed.
+				fulltext:pdf-found, fulltext:pdf-missing or fulltext:check-needed. The export
+				lists everything still tagged missing or needing a look, ready for interlibrary loan.
 			</description>
+			<checkbox label="Preview only: show where each PDF would come from, attach nothing" native="true"
+					preference="extensions.zotero.zotpdf.dryRun"/>
+			<checkbox label="Remember misses for a day so re-runs skip the lookups" native="true"
+					preference="extensions.zotero.zotpdf.useCache"/>
+			<checkbox label="Also save a report note after retraction and metadata checks" native="true"
+					preference="extensions.zotero.zotpdf.reportNote"/>
 		</groupbox>
 
 		<groupbox>

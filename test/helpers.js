@@ -20,6 +20,7 @@ function load(opts = {}) {
 		console,
 		setTimeout,
 		ZotPDF: {},
+		TextDecoder,
 		Services: { prompt: { confirm: () => true, prompt: () => true } },
 		IOUtils: { write: async () => {}, remove: async () => {} },
 		PathUtils: { join: (...a) => a.join("/") },

@@ -5,6 +5,8 @@ zotpdf-menu =
 
 zotpdf-menu-find =
     .label = Find PDFs
+zotpdf-menu-dryrun =
+    .label = Preview sources (no download)
 zotpdf-menu-retractions =
     .label = Check for retractions
 zotpdf-menu-citations =
@@ -18,6 +20,8 @@ zotpdf-menu-retractions-tagged =
     .label = Check tagged items for retractions
 zotpdf-menu-citations-tagged =
     .label = Check tagged items' citation metadata
+zotpdf-menu-export =
+    .label = Export missing PDFs (CSV)…
 zotpdf-menu-settings =
     .label = Settings…
 zotpdf-menu-audit =
@@ -50,3 +54,10 @@ zotpdf-prefs-apikey-valid-nocredits = Key works
 zotpdf-prefs-apikey-invalid = Key rejected by OpenAlex
 zotpdf-prefs-apikey-error = Could not reach OpenAlex
 zotpdf-prefs-apikey-empty = Enter a key first
+
+## Item pane
+
+zotpdf-section-header =
+    .label = ZotPDF
+zotpdf-section-sidenav =
+    .tooltiptext = ZotPDF
