@@ -11,15 +11,16 @@
 .zp-hero__badge {
   display: inline-grid;
   place-items: center;
-  width: 4.5rem;
-  height: 4.5rem;
+  width: 5.5rem;
+  height: 5.5rem;
   margin-bottom: 0.6rem;
   border-radius: 1.2rem;
   color: var(--md-primary-bg-color);
   background: var(--md-primary-fg-color);
   box-shadow: 0 0.6rem 1.6rem color-mix(in srgb, var(--md-primary-fg-color) 38%, transparent);
 }
-.zp-hero__badge .twemoji svg { width: 2.4rem; height: 2.4rem; fill: none; stroke: currentColor; }
+.zp-hero__badge .twemoji { display: grid; place-items: center; width: auto; height: auto; }
+.zp-hero__badge .twemoji svg { width: 2.8rem; height: 2.8rem; max-height: none; fill: currentColor; }
 .zp-hero h1 {
   margin: 0.2rem 0 0.6rem;
   font-size: clamp(2rem, 6vw, 3.4rem);
