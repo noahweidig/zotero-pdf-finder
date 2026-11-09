@@ -14,10 +14,10 @@ imported 300 references and need the PDFs behind them, and a clean reference lis
 
 ## What it does
 
-- **Find PDFs.** Per item, the first of 14 free sources to return a real PDF wins:
+- **Find PDFs.** Per item, the first of 15 free sources to return a real PDF wins:
   Unpaywall, PubMed Central, Europe PMC, Semantic Scholar, Crossref (open-licensed links
   and linked preprints), CORE, OpenAIRE, preprint servers and repositories (arXiv, bioRxiv,
-  medRxiv, OSF, PeerJ, Zenodo, Figshare), HAL, DOAJ, OpenAlex (links and optional hosted
+  medRxiv, OSF, PeerJ, Zenodo, Figshare), HAL, DOAJ, OSTI, OpenAlex (links and optional hosted
   full text), then free-to-read pages through Zotero's downloader. Dead links are retried
   through the Internet Archive. Matches by DOI, PMID, arXiv ID or exact title; the result
   column names the source that worked. Every source has a checkbox. Each item is tagged

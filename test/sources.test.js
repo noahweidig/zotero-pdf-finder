@@ -248,3 +248,29 @@ test("Crossref lists a repeated PDF link once", async () => {
 		link: [link, Object.assign({}, link, { "content-type": "unspecified" })] } })]], { doi: "10.7717/peerj.4375" });
 	assert.equal((await S.crossref(ctx)).locations.length, 1);
 });
+
+test("OSTI: the fulltext link of a DOE record is a location", async () => {
+	const S = load();
+	const ctx = ctxWith([[/osti\.gov/, ok([{ links: [
+		{ rel: "citation", href: "https://www.osti.gov/biblio/1234567" },
+		{ rel: "fulltext", href: "https://www.osti.gov/servlets/purl/1234567" }] }])]], { doi: "10.2172/1234567" });
+	eq((await S.osti(ctx)).locations, [{ url: "https://www.osti.gov/servlets/purl/1234567", license: "US Government work" }]);
+	eq((await S.osti(ctxWith([], { doi: "10.1/none" }))).locations, []);
+	eq((await S.osti(ctxWith([], {}))).locations, []);
+});
+
+test("title match: a dropped subtitle counts only with a long prefix and agreeing years", () => {
+	const S = load();
+	const ctx = { title: "Deep residual learning for image recognition at scale: a study of depth", year: 2016 };
+	assert.equal(S.titleMatches(ctx, "Deep residual learning for image recognition at scale", 2016), true);
+	assert.equal(S.titleMatches(ctx, "Deep residual learning for image recognition at scale", 2010), false);
+	assert.equal(S.titleMatches(ctx, "Deep residual learning for image recognition at scale", null), false);
+	assert.equal(S.titleMatches(ctx, "Deep residual learning", 2016), false); // too short a prefix
+	assert.equal(S.titleMatches({ title: "Attention is all you need", year: 2017 }, "Attention is all you need and more", 2017), false);
+	assert.equal(S.titleMatches({ title: "A Title", year: 2017 }, "a title", 2018), true); // exact still within one year
+});
+
+test("build() includes OSTI and honours its switch", () => {
+	assert.ok(load().build({ landings: [] }).some(s => s.id === "osti"));
+	assert.ok(!load({ "source.osti": false }).build({ landings: [] }).some(s => s.id === "osti"));
+});

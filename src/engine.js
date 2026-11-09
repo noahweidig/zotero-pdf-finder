@@ -30,6 +30,12 @@ ZotPDF.Engine = {
 	initialized: false,
 	running: false,
 
+	// Preprint and repository DOI prefixes: a PDF carrying one of these may legitimately
+	// belong to a published item, so it is never rejected as "a different paper"
+	RELATED_DOI_PREFIXES: ["10.1101", "10.48550", "10.31219", "10.31234", "10.31235", "10.31222",
+		"10.31223", "10.7287", "10.5281", "10.6084", "10.21203", "10.2139", "10.26434"],
+	CACHE_TTL_MS: 86400000,
+
 	STATUS_TAGS: ["fulltext:pdf-found", "fulltext:pdf-missing", "fulltext:check-needed"],
 	STATUS_BY_KEY: {
 		found: "fulltext:pdf-found",
@@ -64,7 +70,7 @@ ZotPDF.Engine = {
 	AUDIT_MAX: 500,
 	// A real OA article PDF is essentially always larger than this; smaller "PDFs"
 	// are almost always publisher error/landing stubs, so we reject them (-> check).
-	MIN_PDF_BYTES: 10000,
+	MIN_PDF_BYTES: 1024,
 	MAX_PDF_BYTES: 100000000,
 	HTTP_TIMEOUT: 30000,
 	// Pause before EVERY outgoing request (not just per item) — NCBI asks for
@@ -130,6 +136,8 @@ ZotPDF.Engine = {
 		bind("zotpdf-test-connection", () => self.prefTestConnection());
 		bind("zotpdf-view-audit", () => self.showAuditLog(self.prefWin()));
 		bind("zotpdf-find-run", () => self.runForTag(self.prefWin()));
+		bind("zotpdf-export-run", () => self.exportMissing(self.prefWin()));
+		bind("zotpdf-cache-clear", () => { self.cacheClear(); self.prefSay("Forgot the remembered misses. The next run looks everything up again."); });
 		bind("zotpdf-retract-run", () => self.runRetractionForTag(self.prefWin()));
 		bind("zotpdf-citation-run", () => self.runCitationCheckForTag(self.prefWin()));
 	},
@@ -222,6 +230,7 @@ ZotPDF.Engine = {
 		};
 		if (UI) {
 			let p = UI.createProgress(kind);
+			if (p.onCancel) p.onCancel(() => this.requestCancel());
 			for (let it of items) p.add(it);
 			return {
 				get cancelled() { return p.cancelled; },
@@ -252,6 +261,51 @@ ZotPDF.Engine = {
 		};
 	},
 
+	// Where an item stands, read from its ZotPDF tags. Pure; used by the list column
+	// and the item pane section.
+	statusSummary(item) {
+		let tags = this.itemTags(item);
+		let has = t => tags.includes(t);
+		let pdf = has("fulltext:pdf-found") ? "PDF found"
+			: has("fulltext:pdf-missing") ? "No open-access copy"
+				: has("fulltext:check-needed") ? "Needs a look" : "Not checked";
+		let retraction = has("retraction:retracted") ? "RETRACTED"
+			: has("retraction:none") ? "None recorded"
+				: has("retraction:check-needed") ? "Needs a look" : "Not checked";
+		let citation = has("citation:ok") ? "Looks right"
+			: has("citation:mismatch") ? "Doesn’t match Crossref"
+				: has("citation:incomplete") ? "Missing fields"
+					: has("citation:check-needed") ? "Needs a look" : "Not checked";
+		let label = has("retraction:retracted") ? "⚠ Retracted" : has("fulltext:pdf-found") ? "PDF"
+			: has("fulltext:pdf-missing") ? "No PDF" : has("fulltext:check-needed") ? "Check" : "";
+		return { pdf, retraction, citation, label };
+	},
+
+	statusLabel(item) {
+		try { return this.statusSummary(item).label; }
+		catch (e) { return ""; }
+	},
+
+	async runDryForSelected(window) {
+		let items = window.ZoteroPane.getSelectedItems()
+			.filter(it => it.isRegularItem() && it.isTopLevelItem());
+		if (!items.length) {
+			window.alert("ZotPDF: select one or more regular items first (not attachments or notes).");
+			return;
+		}
+		await this.run(items, window, { dryRun: true });
+	},
+
+	// The library shown in the window (group libraries included), else the user library
+	currentLibraryID(window) {
+		try {
+			let id = window && window.ZoteroPane && window.ZoteroPane.getSelectedLibraryID();
+			if (id) return id;
+		}
+		catch (e) { /* fall through */ }
+		return Zotero.Libraries.userLibraryID;
+	},
+
 	async runForSelected(window) {
 		let items = window.ZoteroPane.getSelectedItems()
 			.filter(it => it.isRegularItem() && it.isTopLevelItem());
@@ -265,7 +319,7 @@ ZotPDF.Engine = {
 	async runForTag(window) {
 		let tag = this.getPref("triggerTag") || "zotpdf";
 		let s = new Zotero.Search();
-		s.libraryID = Zotero.Libraries.userLibraryID;
+		s.libraryID = this.currentLibraryID(window);
 		s.addCondition("tag", "is", tag);
 		let ids = await s.search();
 		let items = (await Zotero.Items.getAsync(ids))
@@ -284,7 +338,7 @@ ZotPDF.Engine = {
 	// -----------------------------------------------------------------
 	// The main loop
 	// -----------------------------------------------------------------
-	async run(items, window) {
+	async run(items, window, opts = {}) {
 		if (this.running) {
 			window.alert("ZotPDF is already running — let the current batch finish first.");
 			return;
@@ -293,103 +347,377 @@ ZotPDF.Engine = {
 		let email = await this.ensureEmail(window);
 		if (!email) return;
 
+		let concurrency = Math.min(6, Math.max(1, parseInt(this.getPref("concurrency")) || 3));
 		if (items.length > 60) {
-			let mins = Math.ceil(items.length * ((parseInt(this.getPref("delayMs")) || 400) + 2500) / 60000);
+			let mins = Math.ceil(items.length * ((parseInt(this.getPref("delayMs")) || 400) + 2500)
+				/ concurrency / 60000);
 			let ok = Services.prompt.confirm(
 				window,
 				"ZotPDF",
-				`${items.length} items — ZotPDF fetches politely (one at a time), ` +
+				`${items.length} items — ZotPDF fetches politely (${concurrency} at a time), ` +
 				`so this will take roughly ${mins} min. You can keep using Zotero meanwhile. Continue?`
 			);
 			if (!ok) return;
 		}
 
 		this.running = true;
+		this._cancel = false;
 		try { ZotPDF.API.resetKeyState(); } catch (e) { /* OpenAlex module optional */ }
 		let progress = this.openProgress("find", items);
+		let dryRun = !!opts.dryRun || !!this.getPref("dryRun");
 
 		let delayMs = parseInt(this.getPref("delayMs")) || 400;
 		let rows = [];
 		let counts = { found: 0, missing: 0, check: 0 };
-		let seen = new Map(); // dedup key -> resolved status, so duplicates can mirror it
+		let stats = {};
 
 		try {
-			for (let i = 0; i < items.length; i++) {
-				let item = items[i];
-				if (progress.cancelled) break;
-				let title = (item.getField("title") || "(untitled)").substring(0, 70);
-				progress.begin(item, i, items.length);
+			// Items sharing an identifier are looked up once; the rest mirror the result
+			let groups = new Map();
+			let keyOf = new Map();
+			for (let item of items) {
+				let key = this.extractDOI(item) || this.extractPMID(item) || this.extractPMCID(item) || item.key;
+				keyOf.set(item, key);
+				if (!groups.has(key)) groups.set(key, []);
+				groups.get(key).push(item);
+			}
+			let reps = [...groups.values()].map(g => g[0]);
+			let outcome = new Map();
+			let finished = 0;
 
-				let doi = this.extractDOI(item);
-				let pmid = this.extractPMID(item);
-				let pmcid = this.extractPMCID(item);
-				let dedup = doi || pmid || pmcid || item.key;
-				if (seen.has(dedup)) {
-					// Same paper as an item already handled this run. Don't re-fetch,
-					// but still label it (mirror the original's outcome) so every item
-					// ends up tagged — never silently skipped.
-					let status = seen.get(dedup);
-					await this.setStatusTag(item, this.STATUS_BY_KEY[status]);
-					rows.push({ key: item.key, title, doi: doi || "", pmid: pmid || "",
-						status, reason: "duplicate of an item already processed this run",
-						source: "", license: "", oaStatus: "", duplicate: true });
-					progress.end(item, rows[rows.length - 1]);
-					await Zotero.Promise.delay(delayMs);
-					continue;
+			await this.pool(reps, concurrency, async (item) => {
+				if (progress.cancelled || this._cancel) return;
+				progress.begin(item, finished, items.length);
+				let row = await this.processItem(item, email, { dryRun });
+				if (row.cancelled) {
+					// Half-done: show it as cancelled and leave its tags alone
+					progress.end(item, row);
+					return;
 				}
-				seen.set(dedup, null);
-
-				let row = Object.assign({ key: item.key, title, doi: doi || "", pmid: pmid || "",
-					status: "", reason: "", source: "", license: "", oaStatus: "" },
-					{});
-				try {
-					if (this.hasPDF(item)) {
-						row.status = "found";
-						row.reason = "already had a PDF attachment";
-					}
-					else {
-						let noIDs = !doi && !pmid && !pmcid;
-						let landings = [];
-						let sources = this.extraSources(item, { doi, pmid, pmcid, email, landings });
-						let res = await this.resolveOA(doi, pmid, pmcid, email,
-							this.openAlexFallback(item, landings), sources, landings);
-						if (noIDs && res.status !== "found") {
-							res = { status: "check", reason: "no DOI, PMID, or PMCID on the item"
-								+ (res.reason ? "; " + res.reason : "") };
-						}
-						row.status = res.status;
-						row.reason = res.reason || "";
-						row.source = res.source || "";
-						row.license = res.license || "";
-						row.oaStatus = res.oaStatus || "";
-						row.via = res.via || "";
-						if (res.status === "found" && !res.attached) {
-							await this.attachPDF(item, res.bytes, res.source);
-						}
-					}
-				}
-				catch (e) {
-					this.log("item " + item.key + " error: " + e);
-					row.status = "check";
-					row.reason = "unexpected error: " + (e.message || e);
-				}
-
+				outcome.set(keyOf.get(item), row);
 				counts[row.status]++;
-				seen.set(dedup, row.status); // later duplicates mirror this outcome
-				await this.setStatusTag(item, this.STATUS_BY_KEY[row.status]);
+				if (row.status === "found" && row.via && !row.existing) stats[row.via] = (stats[row.via] || 0) + 1;
+				if (!dryRun) await this.applyStatusTag(item, row);
 				rows.push(row);
-				progress.end(item, rows[rows.length - 1]);
+				finished++;
+				progress.end(item, row);
 				await Zotero.Promise.delay(delayMs);
+			});
+
+			let cancelled = progress.cancelled || this._cancel;
+			if (cancelled) {
+				// Everything that never started says so in the table
+				for (let item of items) {
+					if (!outcome.has(keyOf.get(item)) || outcome.get(keyOf.get(item)) === undefined) {
+						progress.end(item, { status: "check", reason: "Cancelled" });
+					}
+				}
+			}
+			for (let group of groups.values()) {
+				let original = outcome.get(keyOf.get(group[0]));
+				for (let dup of group.slice(1)) {
+					if (!original || cancelled) break;
+					let status = original.status;
+					let row = { key: dup.key, title: (dup.getField("title") || "(untitled)").substring(0, 70),
+						doi: original.doi, pmid: original.pmid, status,
+						reason: "duplicate of an item already processed this run",
+						source: "", license: "", oaStatus: "", duplicate: true };
+					counts[status]++;
+					if (!dryRun) await this.applyStatusTag(dup, original);
+					rows.push(row);
+					progress.end(dup, row);
+				}
 			}
 
-			progress.summary(
-				`Done: ${counts.found} found · ${counts.missing} no OA copy · ${counts.check} need a look`
-			);
-
+			let via = Object.entries(stats).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(", ");
+			let attached = counts.found - rows.filter(r => r.existing || r.duplicate).length;
+			let summary = (cancelled ? "Cancelled. " : "") + (dryRun ? "Dry run: " : "Done: ")
+				+ `${counts.found} found${via ? " (" + via + ")" : ""} · ${counts.missing} no OA copy · ${counts.check} need a look`;
+			progress.summary(summary);
+			this.lastRun = { counts, stats, rows, dryRun };
+			try {
+				if (typeof ZotPDF !== "undefined" && ZotPDF.popup && !cancelled) {
+					ZotPDF.popup(dryRun ? "ZotPDF dry run" : "ZotPDF",
+						dryRun ? summary
+							: `${Math.max(attached, 0)} PDF(s) attached · ${counts.missing} not found · ${counts.check} need a look`);
+				}
+			}
+			catch (e) { /* the progress table already has the result */ }
 		}
 		finally {
 			this.running = false;
+			this._cancel = false;
+			this._inflight.clear();
 			progress.close();
+		}
+	},
+
+	// At most `limit` calls of fn(item) in flight
+	async pool(list, limit, fn) {
+		let next = 0;
+		let worker = async () => {
+			while (next < list.length && !this._cancel) {
+				let item = list[next++];
+				await fn(item);
+			}
+		};
+		await Promise.all(Array.from({ length: Math.min(limit, list.length) }, worker));
+	},
+
+	// One item, start to finish; never throws. Returns the result row.
+	async processItem(item, email, opts = {}) {
+		let doi = this.extractDOI(item);
+		let pmid = this.extractPMID(item);
+		let pmcid = this.extractPMCID(item);
+		let row = { key: item.key, title: (item.getField("title") || "(untitled)").substring(0, 70),
+			doi: doi || "", pmid: pmid || "", status: "", reason: "", source: "", license: "", oaStatus: "" };
+		try {
+			if (await this.hasUsablePDF(item)) {
+				row.status = "found";
+				row.reason = "already had a PDF attachment";
+				row.existing = true;
+				return row;
+			}
+			let cacheKey = doi || pmid || pmcid || this.normalizeStr(item.getField("title") || "");
+			let cachedAt = cacheKey ? this.cacheGet(cacheKey) : 0;
+			if (cachedAt) {
+				row.status = "missing";
+				row.reason = "no open-access copy on " + new Date(cachedAt).toLocaleDateString()
+					+ " (remembered for a day; Settings → Forget cached misses)";
+				row.cached = true;
+				return row;
+			}
+
+			let noIDs = !doi && !pmid && !pmcid;
+			let landings = [];
+			let sources = this.extraSources(item, { doi, pmid, pmcid, email, landings });
+			let fallback = this.openAlexFallback(item, landings);
+			if (opts.dryRun && fallback) {
+				// A dry run must not let Zotero's downloader attach anything
+				let real = fallback;
+				fallback = async () => Object.assign(await real(), { publisher: null });
+			}
+			let res = await this.resolveOA(doi, pmid, pmcid, email, fallback, sources, landings);
+			if (noIDs && res.status !== "found") {
+				res = { status: "check", reason: "no DOI, PMID, or PMCID on the item"
+					+ (res.reason ? "; " + res.reason : "") };
+			}
+
+			if (res.status === "found" && !res.attached) {
+				// Reject a PDF that says it is a different paper than the item
+				let verdict = this.verifyPDF(res.bytes, doi);
+				if (!verdict.ok) {
+					this.log(`rejected PDF for ${item.key}: contains ${verdict.found}, item is ${doi}`);
+					res = { status: "check", reason: `the PDF from ${res.via || "a source"} is for a different DOI (${verdict.found})` };
+				}
+			}
+
+			row.status = res.status;
+			row.reason = res.reason || "";
+			row.source = res.source || "";
+			row.license = res.license || "";
+			row.oaStatus = res.oaStatus || "";
+			row.via = res.via || "";
+
+			if (res.status === "found") {
+				if (opts.dryRun) {
+					row.reason = "would attach" + (res.via ? " from " + res.via : "") + " (dry run)";
+				}
+				else {
+					if (!res.attached) await this.attachPDF(item, res.bytes, res.source);
+					let learned = sources && sources.ctx && sources.ctx.doi;
+					if (!doi && learned && this.getPref("writeBackDOI")) await this.fillDOI(item, learned);
+				}
+			}
+			else if (res.status === "missing" && cacheKey) {
+				this.cacheSet(cacheKey);
+			}
+		}
+		catch (e) {
+			if (e && e.cancelled) {
+				row.status = "check";
+				row.reason = "Cancelled";
+				row.cancelled = true;
+				return row;
+			}
+			this.log("item " + item.key + " error: " + e);
+			row.status = "check";
+			row.reason = "unexpected error: " + (e.message || e);
+		}
+		return row;
+	},
+
+	// Tag by outcome. An item that already had a PDF only loses stale missing/check tags.
+	async applyStatusTag(item, row) {
+		if (row.existing) {
+			for (let t of [this.STATUS_BY_KEY.missing, this.STATUS_BY_KEY.check]) item.removeTag(t);
+			await item.saveTx();
+			return;
+		}
+		await this.setStatusTag(item, this.STATUS_BY_KEY[row.status]);
+	},
+
+	async hasUsablePDF(item) {
+		for (let id of item.getAttachments()) {
+			let att = Zotero.Items.get(id);
+			if (!att || att.attachmentContentType !== "application/pdf") continue;
+			// A PDF record whose file is gone does not count
+			if (typeof att.fileExists === "function") {
+				try { if (!(await att.fileExists())) continue; }
+				catch (e) { /* assume present */ }
+			}
+			return true;
+		}
+		return false;
+	},
+
+	// Pure. Many PDFs embed their DOI in XMP or the Info dictionary. Reject only on
+	// positive evidence of a different DOI; no embedded DOI means "can't tell", accept.
+	verifyPDF(bytes, doi) {
+		if (!doi || !bytes || !bytes.length) return { ok: true };
+		let want = String(doi).toLowerCase().replace(/v\d+$/, "");
+		let head = bytes.subarray(0, Math.min(bytes.length, 262144));
+		let tail = bytes.subarray(Math.max(0, bytes.length - 65536));
+		let text;
+		try {
+			let dec = new TextDecoder("latin1");
+			text = dec.decode(head) + "\n" + dec.decode(tail);
+		}
+		catch (e) { return { ok: true }; }
+		let found = [];
+		let patterns = [
+			/<(?:prism|pdfx):doi>\s*(?:doi:|https?:\/\/(?:dx\.)?doi\.org\/)?\s*(10\.\d{4,9}\/[^<\s]+)/gi,
+			/<dc:identifier>\s*(?:doi:)?\s*(10\.\d{4,9}\/[^<\s]+)/gi,
+			/\/doi\s*\(\s*(?:doi:)?(10\.\d{4,9}\/[^)\s]+)\)/gi,
+		];
+		for (let re of patterns) {
+			let m;
+			while ((m = re.exec(text))) {
+				found.push(m[1].toLowerCase().replace(/[.,;]+$/, "").replace(/v\d+$/, ""));
+			}
+		}
+		if (!found.length || found.includes(want)) return { ok: true };
+		let related = found.every(d => this.RELATED_DOI_PREFIXES.some(p => d.startsWith(p + "/")));
+		return related ? { ok: true } : { ok: false, found: found[0] };
+	},
+
+	async fillDOI(item, doi) {
+		try {
+			let fieldID = Zotero.ItemFields.getID("DOI");
+			if (!item.getField("DOI") && Zotero.ItemFields.isValidForType(fieldID, item.itemTypeID)) {
+				item.setField("DOI", doi);
+				await item.saveTx();
+			}
+		}
+		catch (e) {
+			this.log("fillDOI: " + e);
+		}
+	},
+
+	// Misses are remembered for a day so re-running a set doesn't repeat every lookup
+	cacheLoad() {
+		if (this._cache) return this._cache;
+		try { this._cache = JSON.parse(this.getPref("cache") || "{}") || {}; }
+		catch (e) { this._cache = {}; }
+		return this._cache;
+	},
+
+	cacheGet(key) {
+		if (this.getPref("useCache") === false) return 0;
+		let at = this.cacheLoad()[String(key).toLowerCase()];
+		return at && Date.now() - at < this.CACHE_TTL_MS ? at : 0;
+	},
+
+	cacheSet(key) {
+		let cache = this.cacheLoad();
+		cache[String(key).toLowerCase()] = Date.now();
+		let keys = Object.keys(cache);
+		if (keys.length > 2000) {
+			for (let k of keys.sort((a, b) => cache[a] - cache[b]).slice(0, keys.length - 2000)) delete cache[k];
+		}
+		try { this.setPref("cache", JSON.stringify(cache)); } catch (e) { /* in-memory still works */ }
+	},
+
+	cacheClear() {
+		this._cache = {};
+		try { this.setPref("cache", ""); } catch (e) { /* ignore */ }
+	},
+
+	// Every item tagged missing or check-needed (or only the selection), as CSV
+	async exportMissing(window) {
+		let selected = window.ZoteroPane ? window.ZoteroPane.getSelectedItems()
+			.filter(it => it.isRegularItem() && it.isTopLevelItem()) : [];
+		let items = selected;
+		if (!items.length) {
+			let s = new Zotero.Search();
+			s.libraryID = this.currentLibraryID(window);
+			s.joinMode = "any";
+			s.addCondition("tag", "is", this.STATUS_BY_KEY.missing);
+			s.addCondition("tag", "is", this.STATUS_BY_KEY.check);
+			items = (await Zotero.Items.getAsync(await s.search()))
+				.filter(it => it.isRegularItem() && it.isTopLevelItem());
+		}
+		else {
+			items = items.filter(it => {
+				let tags = this.itemTags(it);
+				return tags.includes(this.STATUS_BY_KEY.missing) || tags.includes(this.STATUS_BY_KEY.check);
+			});
+		}
+		if (!items.length) {
+			window.alert("ZotPDF: no items are tagged " + this.STATUS_BY_KEY.missing + " or "
+				+ this.STATUS_BY_KEY.check + ".");
+			return;
+		}
+		let csv = this.buildMissingCSV(items);
+		let saved = await this.saveText(window, "zotpdf-missing.csv", csv);
+		if (!saved) {
+			try {
+				Zotero.Utilities.Internal.copyTextToClipboard(csv);
+				window.alert(`ZotPDF: copied ${items.length} item(s) to the clipboard as CSV (the file dialog was not available).`);
+			}
+			catch (e) {
+				this.log("export: " + e);
+				window.alert("ZotPDF: could not save or copy the list.");
+			}
+		}
+	},
+
+	// Pure: the list you take to your library for interlibrary loan
+	buildMissingCSV(items) {
+		let esc = v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
+		let header = ["status", "title", "authors", "year", "journal", "doi", "pmid", "url"];
+		let lines = [header.join(",")];
+		for (let item of items) {
+			let f = this.citationFields(item);
+			let tags = this.itemTags(item);
+			let status = tags.includes(this.STATUS_BY_KEY.missing) ? "no open-access copy" : "needs a look";
+			let authors = "";
+			try { authors = (item.getCreators() || []).map(c => c.lastName || c.name || "").filter(Boolean).join("; "); } catch (e) { /* ignore */ }
+			let url = "";
+			try { url = item.getField("url") || ""; } catch (e) { /* ignore */ }
+			lines.push([status, item.getField("title") || "", authors, f.year, f.journal,
+				this.extractDOI(item) || "", this.extractPMID(item) || "", url].map(esc).join(","));
+		}
+		return lines.join("\n") + "\n";
+	},
+
+	async saveText(window, defaultName, text) {
+		try {
+			let { FilePicker } = ChromeUtils.importESModule("chrome://zotero/content/modules/filePicker.mjs");
+			let fp = new FilePicker();
+			fp.init(window, "Save missing PDFs list", fp.modeSave);
+			fp.appendFilter("CSV", "*.csv");
+			fp.defaultString = defaultName;
+			let result = await fp.show();
+			if (result === fp.returnOK || result === fp.returnReplace) {
+				await Zotero.File.putContentsAsync(fp.file, text);
+				return true;
+			}
+			return true; // user cancelled; nothing more to do
+		}
+		catch (e) {
+			this.log("saveText: " + e);
+			return false;
 		}
 	},
 
@@ -430,7 +758,7 @@ ZotPDF.Engine = {
 	async runRetractionForTag(window) {
 		let tag = this.getPref("triggerTag") || "zotpdf";
 		let s = new Zotero.Search();
-		s.libraryID = Zotero.Libraries.userLibraryID;
+		s.libraryID = this.currentLibraryID(window);
 		s.addCondition("tag", "is", tag);
 		let ids = await s.search();
 		let items = (await Zotero.Items.getAsync(ids))
@@ -451,6 +779,7 @@ ZotPDF.Engine = {
 		if (!email) return;
 
 		this.running = true;
+		this._cancel = false;
 		let progress = this.openProgress("retraction", items);
 
 		let delayMs = parseInt(this.getPref("delayMs")) || 400;
@@ -489,6 +818,7 @@ ZotPDF.Engine = {
 					row.source = res.source || "";
 				}
 				catch (e) {
+					if (e && e.cancelled) break;
 					this.log("retraction item " + item.key + " error: " + e);
 					row.status = "check";
 					row.reason = "unexpected error: " + (e.message || e);
@@ -515,6 +845,7 @@ ZotPDF.Engine = {
 		}
 		finally {
 			this.running = false;
+			this._cancel = false;
 			progress.close();
 		}
 	},
@@ -585,6 +916,7 @@ ZotPDF.Engine = {
 			return { message: xhr.response.message };
 		}
 		catch (e) {
+			if (e && e.cancelled) throw e;
 			this.log("crossref error: " + e);
 			return { error: "Crossref request failed" };
 		}
@@ -658,6 +990,7 @@ ZotPDF.Engine = {
 				: { status: "none", reason: "no retraction recorded in PubMed", source };
 		}
 		catch (e) {
+			if (e && e.cancelled) throw e;
 			this.log("retraction check error: " + e);
 			return { status: "check", reason: "retraction lookup failed" };
 		}
@@ -736,7 +1069,7 @@ ZotPDF.Engine = {
 	async runCitationCheckForTag(window) {
 		let tag = this.getPref("triggerTag") || "zotpdf";
 		let s = new Zotero.Search();
-		s.libraryID = Zotero.Libraries.userLibraryID;
+		s.libraryID = this.currentLibraryID(window);
 		s.addCondition("tag", "is", tag);
 		let ids = await s.search();
 		let items = (await Zotero.Items.getAsync(ids))
@@ -757,6 +1090,7 @@ ZotPDF.Engine = {
 		if (!email) return;
 
 		this.running = true;
+		this._cancel = false;
 		let progress = this.openProgress("citation", items);
 
 		let delayMs = parseInt(this.getPref("delayMs")) || 400;
@@ -779,6 +1113,7 @@ ZotPDF.Engine = {
 					row.mismatches = res.mismatches || [];
 				}
 				catch (e) {
+					if (e && e.cancelled) break;
 					this.log("citation item " + item.key + " error: " + e);
 					row.status = "check";
 					row.reason = "unexpected error: " + (e.message || e);
@@ -1021,15 +1356,65 @@ ZotPDF.Engine = {
 	},
 
 	// Paced GET that resolves on any status (we inspect it ourselves).
+	// Cancelling: the Cancel button sets a flag, aborts every request in flight, and
+	// every network step checks the flag, so a cancel stops within a moment instead of
+	// after the current item's remaining lookups.
+	_cancel: false,
+	_inflight: new Set(),
+
+	requestCancel() {
+		this._cancel = true;
+		for (let xhr of [...this._inflight]) {
+			try { xhr.abort(); } catch (e) { /* already finished */ }
+		}
+		this._inflight.clear();
+	},
+
+	cancelledError() {
+		let e = new Error("cancelled");
+		e.cancelled = true;
+		return e;
+	},
+
+	throwIfCancelled() {
+		if (this._cancel) throw this.cancelledError();
+	},
+
+	// Register a request's XHR so Cancel can abort it
+	track(options) {
+		options.requestObserver = (xhr) => { this._inflight.add(xhr); };
+		return options;
+	},
+
+	// One retry, after a second, on a network error or a 5xx. Other statuses are
+	// answers (404 = unknown record, 429 = rate limited) and go back to the caller.
 	async fetch(url, responseType, headers) {
-		await this.politePause();
-		let options = {
+		let options = this.track({
 			responseType,
 			timeout: this.HTTP_TIMEOUT,
 			successCodes: false,
-		};
+		});
 		if (headers) options.headers = headers;
-		return Zotero.HTTP.request("GET", url, options);
+		let lastError;
+		for (let attempt = 0; attempt < 2; attempt++) {
+			this.throwIfCancelled();
+			await this.politePause();
+			this.throwIfCancelled();
+			try {
+				let xhr = await Zotero.HTTP.request("GET", url, options);
+				if (xhr.status >= 500 && attempt === 0) {
+					await Zotero.Promise.delay(1000);
+					continue;
+				}
+				return xhr;
+			}
+			catch (e) {
+				if (this._cancel) throw this.cancelledError();
+				lastError = e;
+				if (attempt === 0) await Zotero.Promise.delay(1000);
+			}
+		}
+		throw lastError;
 	},
 
 	fetchJSON(url, headers) { return this.fetch(url, "json", headers); },
@@ -1072,17 +1457,23 @@ ZotPDF.Engine = {
 			this.log("blocked non-http(s) PDF URL: " + url);
 			return null;
 		}
-		await this.politePause();
 		let xhr;
-		try {
-			xhr = await Zotero.HTTP.request("GET", url, {
-				responseType: "arraybuffer",
-				timeout: this.HTTP_TIMEOUT,
-			});
-		}
-		catch (e) {
-			this.log("download error " + url + ": " + e);
-			return null;
+		for (let attempt = 0; attempt < 2 && !xhr; attempt++) {
+			this.throwIfCancelled();
+			await this.politePause();
+			this.throwIfCancelled();
+			try {
+				xhr = await Zotero.HTTP.request("GET", url, this.track({
+					responseType: "arraybuffer",
+					timeout: this.HTTP_TIMEOUT,
+				}));
+			}
+			catch (e) {
+				if (this._cancel) throw this.cancelledError();
+				this.log("download error " + url + ": " + e);
+				// A 4xx will not improve on retry; a dropped connection might
+				if (attempt === 1 || (e && e.xmlhttp && e.xmlhttp.status >= 400 && e.xmlhttp.status < 500)) return null;
+			}
 		}
 		let bytes = new Uint8Array(xhr.response);
 		let verdict = this.sniffPDFBytes(bytes);
@@ -1114,7 +1505,8 @@ ZotPDF.Engine = {
 			}
 		}
 		catch (e) {
-			this.log("wayback error: " + e);
+			if (e && e.cancelled) throw e;
+				this.log("wayback error: " + e);
 		}
 		return null;
 	},
@@ -1156,7 +1548,8 @@ ZotPDF.Engine = {
 				license: withPDF[0].license_code || "" };
 		}
 		catch (e) {
-			this.log("pmc dataset error: " + e);
+			if (e && e.cancelled) throw e;
+				this.log("pmc dataset error: " + e);
 			return { isOA: false, error: String(e) };
 		}
 	},
@@ -1179,6 +1572,7 @@ ZotPDF.Engine = {
 				return await OA.Finder.fallbackFor(item, landings);
 			}
 			catch (e) {
+				if (e && e.cancelled) throw e;
 				this.log("openalex fallback error: " + e);
 				return { locations: [], error: e.message || String(e) };
 			}
@@ -1192,7 +1586,7 @@ ZotPDF.Engine = {
 		if (!S || !S.build) return [];
 		let title = "";
 		try { title = item.getField("title") || ""; } catch (e) { /* ignore */ }
-		return S.build({
+		let ctx = {
 			doi: ids.doi || null,
 			pmid: ids.pmid || null,
 			pmcid: ids.pmcid || null,
@@ -1202,7 +1596,10 @@ ZotPDF.Engine = {
 			email: ids.email,
 			landings: ids.landings,
 			get: (url, headers) => this.fetchJSON(url, headers),
-		});
+		};
+		let steps = S.build(ctx);
+		steps.ctx = ctx; // run() reads a DOI learned from a title match off this
+		return steps;
 	},
 
 	extractYear(item) {
@@ -1287,6 +1684,7 @@ ZotPDF.Engine = {
 				}
 			}
 			catch (e) {
+				if (e && e.cancelled) throw e;
 				this.log("unpaywall error: " + e);
 				sawError = true;
 				reason = "Unpaywall request failed";
@@ -1317,6 +1715,7 @@ ZotPDF.Engine = {
 				}
 			}
 			catch (e) {
+				if (e && e.cancelled) throw e;
 				this.log("idconv error: " + e);
 				// A DOI-only lookup is a bonus; the other sources still run
 				if (!byDOI) {
@@ -1354,6 +1753,7 @@ ZotPDF.Engine = {
 		let failedSources = [];
 		let listedBut = [];
 		for (let src of sources || []) {
+			this.throwIfCancelled();
 			try {
 				let out = await src.find();
 				let reliable = 0;
@@ -1370,6 +1770,7 @@ ZotPDF.Engine = {
 				if (reliable) listedBut.push(src.label);
 			}
 			catch (e) {
+				if (e && e.cancelled) throw e;
 				this.log("source " + src.id + " error: " + e);
 				failedSources.push(src.label);
 			}
@@ -1416,12 +1817,14 @@ ZotPDF.Engine = {
 				? [tryHosted, tryLinks, tryPublisher]
 				: [tryLinks, tryHosted, tryPublisher];
 			for (let step of steps) {
+				this.throwIfCancelled();
 				try {
 					let r = await step();
 					if (r) return r;
 				}
 				catch (e) {
-					this.log("openalex step error: " + e);
+					if (e && e.cancelled) throw e;
+				this.log("openalex step error: " + e);
 					sawError = true;
 					reason = join(reason, "OpenAlex: " + (e.message || e));
 				}

@@ -12,7 +12,7 @@ ZotPDF includes code from open-source projects under the MIT and Apache-2.0 lice
 
 ## Data sources
 
-PDF locations and metadata come from [Unpaywall](https://unpaywall.org), [PubMed Central](https://pmc.ncbi.nlm.nih.gov), [Europe PMC](https://europepmc.org), [OpenAlex](https://openalex.org) (run by the non-profit [OurResearch](https://ourresearch.org)), [Semantic Scholar](https://www.semanticscholar.org), [Crossref](https://www.crossref.org), [CORE](https://core.ac.uk), [OpenAIRE](https://www.openaire.eu), [HAL](https://hal.science), [DOAJ](https://doaj.org), [arXiv](https://arxiv.org), [bioRxiv and medRxiv](https://www.biorxiv.org), [OSF Preprints](https://osf.io/preprints), [Zenodo](https://zenodo.org), [Figshare](https://figshare.com) and the [Internet Archive](https://archive.org). If they save you time, consider supporting them.
+PDF locations and metadata come from [Unpaywall](https://unpaywall.org), [PubMed Central](https://pmc.ncbi.nlm.nih.gov), [Europe PMC](https://europepmc.org), [OpenAlex](https://openalex.org) (run by the non-profit [OurResearch](https://ourresearch.org)), [Semantic Scholar](https://www.semanticscholar.org), [Crossref](https://www.crossref.org), [CORE](https://core.ac.uk), [OpenAIRE](https://www.openaire.eu), [HAL](https://hal.science), [DOAJ](https://doaj.org), [OSTI](https://www.osti.gov), [arXiv](https://arxiv.org), [bioRxiv and medRxiv](https://www.biorxiv.org), [OSF Preprints](https://osf.io/preprints), [Zenodo](https://zenodo.org), [Figshare](https://figshare.com) and the [Internet Archive](https://archive.org). If they save you time, consider supporting them.
 
 ## Contributing
 

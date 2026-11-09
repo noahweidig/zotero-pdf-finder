@@ -6,7 +6,7 @@
  * only on an exact normalized title with a year within one.
  *
  * Source order: Europe PMC, Semantic Scholar, Crossref, CORE, OpenAIRE, preprint
- * servers and data repositories, HAL, DOAJ. Each is a Settings checkbox.
+ * servers and data repositories, HAL, DOAJ, OSTI. Each is a Settings checkbox.
  */
 
 ZotPDF.Sources = {
@@ -18,7 +18,8 @@ ZotPDF.Sources = {
 		{ id: 'openaire', label: 'OpenAIRE' },
 		{ id: 'preprints', label: 'Preprint servers' },
 		{ id: 'hal', label: 'HAL' },
-		{ id: 'doaj', label: 'DOAJ' }
+		{ id: 'doaj', label: 'DOAJ' },
+		{ id: 'osti', label: 'OSTI' }
 	],
 
 	// Licenses we accept as "free to read and share" on a publisher-supplied link
@@ -81,16 +82,24 @@ ZotPDF.Sources = {
 			.trim();
 	},
 
-	/** Exact normalized title and a year within one (or either year unknown). */
+	/**
+	 * Exact normalized title and a year within one (or either year unknown). A title
+	 * that is a long prefix of the other (a subtitle was dropped) also counts, but only
+	 * when both years are known and agree.
+	 */
 	titleMatches(ctx, title, year) {
 		if (!ctx.title || !title) {
 			return false;
 		}
-		if (this.normalizeTitle(title) !== this.normalizeTitle(ctx.title)) {
-			return false;
-		}
+		let a = this.normalizeTitle(title);
+		let b = this.normalizeTitle(ctx.title);
 		let y = parseInt(year, 10);
-		return !(ctx.year && y && Math.abs(y - ctx.year) > 1);
+		let yearOK = !(ctx.year && y && Math.abs(y - ctx.year) > 1);
+		if (a === b) {
+			return yearOK;
+		}
+		let [short, long] = a.length <= b.length ? [a, b] : [b, a];
+		return !!(ctx.year && y && yearOK && short.split(' ').length >= 6 && long.startsWith(short + ' '));
 	},
 
 	async json(ctx, url, headers) {
@@ -464,5 +473,17 @@ ZotPDF.Sources = {
 			}
 		}
 		return { locations };
+	},
+
+	async osti(ctx) {
+		if (!ctx.doi) {
+			return { locations: [] };
+		}
+		let data = await this.json(ctx, 'https://www.osti.gov/api/v1/records?rows=1&doi=' + encodeURIComponent(ctx.doi),
+			{ Accept: 'application/json' });
+		let rec = Array.isArray(data) ? data[0] : null;
+		let link = rec && (rec.links || []).find(l => l.rel === 'fulltext' && l.href);
+		// US Department of Energy research reports are public
+		return { locations: link ? [{ url: link.href, license: 'US Government work' }] : [] };
 	}
 };

@@ -20,6 +20,8 @@ var ZotPDF = {
 	// Window -> { elements, listeners } for removal.
 	_legacyMenus: null,
 	_ownStringsWork: false,
+	_columnKey: null,
+	_sectionID: null,
 	// progress kind -> { queue, onCancel }
 	_queues: {},
 
@@ -43,6 +45,7 @@ var ZotPDF = {
 
 		await this.registerPreferencePane();
 		this.registerMenus();
+		this.registerItemUI();
 
 		// Exposed for the preferences pane and for Tools -> Developer -> Run JavaScript
 		Zotero.ZotPDF = this;
@@ -71,6 +74,8 @@ var ZotPDF = {
 			}
 		}
 		this._menuIDs = [];
+
+		this.unregisterItemUI();
 
 		if (this._prefPaneID) {
 			try {
@@ -201,6 +206,7 @@ var ZotPDF = {
 		if (scope === 'item') {
 			return [
 				{ l10nID: 'zotpdf-menu-find', command: win => E().runForSelected(win) },
+				{ l10nID: 'zotpdf-menu-dryrun', command: win => E().runDryForSelected(win) },
 				{ l10nID: 'zotpdf-menu-retractions', command: win => E().runRetractionForSelected(win) },
 				{ l10nID: 'zotpdf-menu-citations', command: win => E().runCitationCheckForSelected(win) },
 				{ separator: true },
@@ -211,6 +217,7 @@ var ZotPDF = {
 			{ l10nID: 'zotpdf-menu-find-tagged', command: win => E().runForTag(win) },
 			{ l10nID: 'zotpdf-menu-retractions-tagged', command: win => E().runRetractionForTag(win) },
 			{ l10nID: 'zotpdf-menu-citations-tagged', command: win => E().runCitationCheckForTag(win) },
+			{ l10nID: 'zotpdf-menu-export', command: win => E().exportMissing(win) },
 			{ separator: true },
 			{ l10nID: 'zotpdf-menu-settings', command: () => this.openPreferences() },
 			{ l10nID: 'zotpdf-menu-audit', command: win => E().showAuditLog(win) }
@@ -392,9 +399,17 @@ var ZotPDF = {
 		if (previous) {
 			queue.removeListener('cancel', previous);
 		}
-		let state = { cancelled: false };
+		let state = { cancelled: false, callbacks: [] };
 		let onCancel = () => {
 			state.cancelled = true;
+			for (let callback of state.callbacks) {
+				try {
+					callback();
+				}
+				catch (e) {
+					Zotero.logError(e);
+				}
+			}
 		};
 		queue.addListener('cancel', onCancel);
 		queue._zotpdfCancelListener = onCancel;
@@ -406,12 +421,16 @@ var ZotPDF = {
 		}
 
 		let dialog = queue.getDialog();
-		dialog.showMinimizeButton(false);
+		// Let the window be minimized so a long run stays out of the way
+		dialog.showMinimizeButton(true);
 		dialog.open();
 
 		return {
 			get cancelled() {
 				return state.cancelled;
+			},
+			onCancel(callback) {
+				state.callbacks.push(callback);
 			},
 			add(item) {
 				queue.addRow(item);
@@ -429,6 +448,125 @@ var ZotPDF = {
 				dialog.setStatus(message);
 			}
 		};
+	},
+
+	/** Corner popup, used for the one-line result when a run finishes. */
+	popup(headline, message) {
+		let progressWindow = new Zotero.ProgressWindow();
+		progressWindow.changeHeadline(headline);
+		let itemProgress = new progressWindow.ItemProgress('attachmentPDF', message);
+		progressWindow.show();
+		itemProgress.setProgress(100);
+		progressWindow.startCloseTimer(7000);
+	},
+
+	//
+	// Item list column and item pane section (Zotero versions that offer the APIs)
+	//
+
+	registerItemUI() {
+		let engine = () => this.Engine;
+		try {
+			if (Zotero.ItemTreeManager && Zotero.ItemTreeManager.registerColumns) {
+				this._columnKey = Zotero.ItemTreeManager.registerColumns({
+					dataKey: 'zotpdf-status',
+					label: 'ZotPDF',
+					pluginID: this.id,
+					dataProvider: item => (engine() ? engine().statusLabel(item) : '')
+				}) || null;
+			}
+		}
+		catch (e) {
+			this.log('Column not registered: ' + e);
+		}
+
+		try {
+			if (Zotero.ItemPaneManager && Zotero.ItemPaneManager.registerSection) {
+				let icon = this.rootURI + 'icons/zotpdf-16.svg';
+				this._sectionID = Zotero.ItemPaneManager.registerSection({
+					paneID: 'zotpdf',
+					pluginID: this.id,
+					header: { l10nID: 'zotpdf-section-header', icon },
+					sidenav: { l10nID: 'zotpdf-section-sidenav', icon },
+					onItemChange: ({ item, setEnabled }) => {
+						setEnabled(!!item && item.isRegularItem());
+					},
+					onRender: ({ body, item, setSectionSummary }) => this._renderSection(body, item, setSectionSummary)
+				}) || null;
+			}
+		}
+		catch (e) {
+			this.log('Item pane section not registered: ' + e);
+		}
+	},
+
+	unregisterItemUI() {
+		try {
+			if (this._columnKey) {
+				Zotero.ItemTreeManager.unregisterColumns(this._columnKey);
+			}
+		}
+		catch (e) {
+			this.log(e);
+		}
+		this._columnKey = null;
+		try {
+			if (this._sectionID) {
+				Zotero.ItemPaneManager.unregisterSection(this._sectionID);
+			}
+		}
+		catch (e) {
+			this.log(e);
+		}
+		this._sectionID = null;
+	},
+
+	_renderSection(body, item, setSectionSummary) {
+		let engine = this.Engine;
+		if (!engine || !item) {
+			return;
+		}
+		let doc = body.ownerDocument;
+		let win = doc.defaultView;
+		let summary = engine.statusSummary(item);
+		try {
+			setSectionSummary(summary.label);
+		}
+		catch (e) {
+			// The summary is decoration
+		}
+
+		let wrap = doc.createElement('div');
+		wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:4px 0';
+		let line = (name, value) => {
+			let row = doc.createElement('div');
+			row.style.cssText = 'display:flex;gap:8px';
+			let k = doc.createElement('span');
+			k.style.cssText = 'min-width:6.5em;opacity:.7';
+			k.textContent = name;
+			let v = doc.createElement('span');
+			v.textContent = value;
+			row.append(k, v);
+			wrap.append(row);
+		};
+		line('PDF', summary.pdf);
+		line('Retraction', summary.retraction);
+		line('Metadata', summary.citation);
+
+		let buttons = doc.createElement('div');
+		buttons.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-top:4px';
+		let add = (label, fn) => {
+			let button = doc.createElement('button');
+			button.textContent = label;
+			button.addEventListener('click', () => this._run(fn(), win));
+			buttons.append(button);
+		};
+		add('Find PDF', () => engine.run([item], win));
+		add('Check retraction', () => engine.runRetraction([item], win));
+		add('Check metadata', () => engine.runCitationCheck([item], win));
+		wrap.append(buttons);
+
+		body.replaceChildren(wrap);
 	},
 
 	log(message) {

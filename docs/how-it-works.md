@@ -21,6 +21,7 @@ For each item ZotPDF extracts a DOI, PMID, PMCID and arXiv ID, then tries source
 | 8 | Preprint servers and repositories | DOI prefix, arXiv ID | arXiv, bioRxiv, medRxiv, OSF Preprints (and PsyArXiv, SocArXiv, MetaArXiv, EarthArXiv), PeerJ Preprints, Zenodo (open records, PDF files), Figshare. |
 | 9 | HAL | DOI or title | The French national open archive. |
 | 10 | DOAJ | DOI | Full-text links of open-access journals. |
+| 10b | OSTI | DOI | US Department of Energy research reports. |
 | 11 | OpenAlex links | DOI, PMID, arXiv ID or title | Locations OpenAlex marks open access with a direct PDF URL. Published before accepted before submitted. |
 | 12 | OpenAlex hosted | needs an API key | Optional. About $0.01 a file, roughly 100 a day free. Tried before step 11 if you turn on "prefer hosted". |
 | 13 | Internet Archive | any dead link above | If a link from steps 1 to 11 fails, ZotPDF retries the Archive's copy of the same URL. |
@@ -46,6 +47,15 @@ A source that errors or rate-limits is skipped and named in the result ("CORE un
 | None of those | `filter=title.search:…` | Normalized titles are identical and years differ by at most 1 |
 
 A wrong PDF on the wrong reference is worse than none, so near-matches are reported, never attached.
+
+## Quality and speed
+
+- **Wrong-paper check.** Many PDFs embed their DOI in their metadata. If the file you downloaded says it is a different paper than the item, ZotPDF does not attach it and tags the item `check-needed` with the DOI it found. A PDF with no embedded DOI is accepted, and preprint DOIs inside a published item's PDF are tolerated.
+- **Parallel lookups.** Three items are looked up at a time (hidden preference `concurrency`, 1 to 6). Items that share a DOI are fetched once.
+- **Retries.** A network error or a 5xx is retried once. A 404 or 429 is an answer, not a failure.
+- **Remembered misses.** An item with no open-access copy is not looked up again for a day. *Forget cached misses* in Settings clears it, and the checkbox switches it off.
+- **Cancel.** Cancel stops every request in flight and does not tag the item it interrupted. Items already finished keep their tags; the rest read "Cancelled".
+- **Existing PDFs.** An attachment whose file is missing does not count as a PDF. An item that already has one is left alone apart from clearing stale `pdf-missing` and `check-needed` tags.
 
 ## Duplicates and politeness
 

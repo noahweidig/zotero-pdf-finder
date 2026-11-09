@@ -11,20 +11,20 @@ hide:
 
 # Every free PDF.<br>One right-click.
 
-<p class="zp-hero__lede">ZotPDF finds open-access PDFs for your Zotero references from 14 free sources, flags retracted papers, and audits citation metadata.</p>
+<p class="zp-hero__lede">ZotPDF finds open-access PDFs for your Zotero references from 15 free sources, flags retracted papers, and audits citation metadata.</p>
 
 [:lucide-download: Download zotpdf.xpi](https://github.com/noahweidig/zotpdf/releases/latest/download/zotpdf.xpi){ .md-button .md-button--primary }
 [:lucide-book-open: Install guide](install.md){ .md-button }
 [:octicons-mark-github-16: GitHub](https://github.com/noahweidig/zotpdf){ .md-button }
 
 <div class="zp-stats">
-  <div><strong>14</strong><small>free sources</small></div>
+  <div><strong>15</strong><small>free sources</small></div>
   <div><strong>0</strong><small>accounts needed</small></div>
   <div><strong>3</strong><small>checks in one menu</small></div>
 </div>
 
 <div class="zp-chips">
-  <span>Unpaywall</span><span>PubMed Central</span><span>Europe PMC</span><span>Semantic Scholar</span><span>Crossref</span><span>CORE</span><span>OpenAIRE</span><span>arXiv</span><span>bioRxiv</span><span>medRxiv</span><span>OSF</span><span>Zenodo</span><span>Figshare</span><span>HAL</span><span>DOAJ</span><span>OpenAlex</span><span>Internet Archive</span>
+  <span>Unpaywall</span><span>PubMed Central</span><span>Europe PMC</span><span>Semantic Scholar</span><span>Crossref</span><span>CORE</span><span>OpenAIRE</span><span>arXiv</span><span>bioRxiv</span><span>medRxiv</span><span>OSF</span><span>Zenodo</span><span>Figshare</span><span>HAL</span><span>DOAJ</span><span>OSTI</span><span>OpenAlex</span><span>Internet Archive</span>
 </div>
 
 </div>
@@ -93,7 +93,7 @@ flowchart LR
   F --> G[CORE]
   G --> H[OpenAIRE]
   H --> I[Preprint servers]
-  I --> J[HAL, DOAJ]
+  I --> J[HAL, DOAJ, OSTI]
   J --> K[OpenAlex]
   K --> L[Internet Archive]
   L --> M[Free-to-read pages]

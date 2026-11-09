@@ -1,6 +1,6 @@
 [project]
 site_name = "ZotPDF"
-site_description = "Find open-access PDFs from 14 free sources, flag retracted papers, and audit citation metadata, inside Zotero."
+site_description = "Find open-access PDFs from 15 free sources, flag retracted papers, and audit citation metadata, inside Zotero."
 site_author = "Noah Weidig"
 site_url = "https://noahweidig.github.io/zotpdf/"
 repo_url = "https://github.com/noahweidig/zotpdf"

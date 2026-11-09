@@ -1,7 +1,7 @@
 {
 	"manifest_version": 2,
 	"name": "ZotPDF",
-	"version": "0.5.1",
+	"version": "0.6.0",
 	"description": "Find open-access PDFs for your Zotero items from Unpaywall, PubMed Central and OpenAlex, check for retractions, and audit citation metadata.",
 	"homepage_url": "https://github.com/noahweidig/zotpdf",
 	"author": "Noah Weidig",

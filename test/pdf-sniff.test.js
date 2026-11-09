@@ -32,9 +32,14 @@ test("rejects HTML hidden behind a BOM and whitespace", () => {
 	assert.equal(fv.sniffPDFBytes(b).ok, false);
 });
 
+test("accepts a short real PDF (a one-page letter) but rejects a stub", () => {
+	const { fv } = load();
+	assert.equal(fv.sniffPDFBytes(pdfBytes(3000)).ok, true);
+});
+
 test("rejects a too-small PDF stub", () => {
 	const { fv } = load();
-	const v = fv.sniffPDFBytes(pdfBytes(5000));
+	const v = fv.sniffPDFBytes(pdfBytes(500));
 	assert.equal(v.ok, false);
 	assert.match(v.reason, /too small/);
 });

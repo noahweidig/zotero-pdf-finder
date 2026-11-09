@@ -24,6 +24,14 @@ icon: lucide/life-buoy
 
     Most often a rate limit (Semantic Scholar and CORE without a key). ZotPDF skips that source for a minute and carries on. A free key in Settings avoids it.
 
+??? question "Cancel seems slow"
+
+    Cancel aborts requests in flight, so it should stop within a second. If a publisher-page download was already handed to Zotero's own downloader, that single download finishes first; nothing after it starts.
+
+??? question "A PDF was rejected as \"a different DOI\""
+
+    The file embeds a DOI that is not the item's. Check the item's DOI field; a wrong DOI is the usual cause. Fix it and run again.
+
 ??? question "Everything comes back \"check needed\""
 
     Usually a network problem or a blocked host. Make sure `api.unpaywall.org`, `eutils.ncbi.nlm.nih.gov`, `pmc-oa-opendata.s3.amazonaws.com`, `api.openalex.org` and `api.crossref.org` are reachable.
