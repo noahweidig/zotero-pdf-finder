@@ -1,0 +1,32 @@
+{
+  "name": "ZotPDF",
+  "short_name": "ZotPDF",
+  "description": "Find open-access PDFs for Zotero from 15 free sources.",
+  "start_url": "./",
+  "display": "standalone",
+  "theme_color": "#3373B5",
+  "background_color": "#ffffff",
+  "icons": [
+    {
+      "src": "android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

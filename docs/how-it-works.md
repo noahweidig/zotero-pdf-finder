@@ -1,5 +1,9 @@
 ---
 icon: lucide/workflow
+tags:
+  - PDFs
+  - Sources
+  - Internals
 ---
 
 # How it works

@@ -18,10 +18,13 @@ nav = [
   { "Privacy" = "privacy.md" },
   { "Troubleshooting" = "troubleshooting.md" },
   { "Credits and licenses" = "about.md" },
+  { "Tags" = "tags.md" },
 ]
 
 [project.theme]
 language = "en"
+custom_dir = "overrides"
+favicon = "favicon.svg"
 features = [
   "announce.dismiss",
   "content.code.annotate",
@@ -45,6 +48,21 @@ features = [
 logo = "lucide/file-down"
 repo = "octicons/mark-github-16"
 
+[project.theme.icon.tag]
+default = "lucide/hash"
+pdf = "lucide/file-down"
+retraction = "lucide/shield-alert"
+metadata = "lucide/list-checks"
+sources = "lucide/layers"
+settings = "lucide/settings"
+privacy = "lucide/lock"
+advanced = "lucide/plug"
+help = "lucide/life-buoy"
+legal = "lucide/scale"
+start = "lucide/rocket"
+zotero = "lucide/library-big"
+internals = "lucide/workflow"
+
 [[project.theme.palette]]
 media = "(prefers-color-scheme)"
 toggle.icon = "lucide/sun-moon"
@@ -61,6 +79,22 @@ media = "(prefers-color-scheme: dark)"
 scheme = "slate"
 toggle.icon = "lucide/moon"
 toggle.name = "Switch to system preference"
+
+[project.plugins.tags]
+
+[project.extra.tags]
+"PDFs" = "pdf"
+"Retractions" = "retraction"
+"Metadata" = "metadata"
+"Sources" = "sources"
+"Settings" = "settings"
+"Privacy" = "privacy"
+"Advanced" = "advanced"
+"Help" = "help"
+"Legal" = "legal"
+"Getting started" = "start"
+"Zotero" = "zotero"
+"Internals" = "internals"
 
 [project.markdown_extensions]
 abbr = {}

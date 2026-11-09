@@ -3,6 +3,7 @@ icon: lucide/file-down
 hide:
   - navigation
   - toc
+  - tags
 ---
 
 <div class="zp-hero" markdown>

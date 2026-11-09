@@ -1,5 +1,8 @@
 ---
 icon: lucide/shield-alert
+tags:
+  - Retractions
+  - Metadata
 ---
 
 # Retraction and metadata checks
