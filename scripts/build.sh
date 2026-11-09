@@ -24,6 +24,7 @@ zip -r -q -X "$XPI" \
 	icons \
 	LICENSE \
 	LICENSE-FULLVAHTI \
+	LICENSE-LUCIDE \
 	NOTICE \
 	--exclude '*.DS_Store'
 

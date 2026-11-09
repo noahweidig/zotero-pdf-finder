@@ -1,4 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
-	<path fill="context-fill" fill-opacity="context-fill-opacity" fill-rule="evenodd" clip-rule="evenodd"
-		d="M3 1 H9 L13 5 V15 H3 Z M5 4 h3 v1.2 H5 Z M7.4 6.6 h1.2 V9.8 h-1.2 Z M5.5 9.8 H10.5 L8 12.4 Z M5 13 h6 v1 H5 Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="context-fill" stroke-opacity="context-fill-opacity" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<!-- Lucide "file-down", ISC license, see LICENSE-LUCIDE -->
+<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/>
+<path d="M14 2v5a1 1 0 0 0 1 1h5"/>
+<path d="M12 18v-6"/>
+<path d="m9 15 3 3 3-3"/>
 </svg>

@@ -13,7 +13,7 @@ Zotero plugin combining two projects in one `zotpdf.xpi`:
 
 Build: `npm run build` (writes `build/zotpdf.xpi`). Checks: `npm run lint && npm test`.
 
-Licenses: MIT (`LICENSE`) for OpenAlex PDF Finder code; Apache-2.0 (`LICENSE-FULLVAHTI`, `NOTICE`) for `src/fullvahti.js`.
+Licenses: MIT (`LICENSE`) for OpenAlex PDF Finder code; Apache-2.0 (`LICENSE-FULLVAHTI`, `NOTICE`) for `src/fullvahti.js`; ISC (`LICENSE-LUCIDE`) for the icon.
 
 ---
 

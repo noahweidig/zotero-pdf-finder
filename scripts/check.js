@@ -65,6 +65,7 @@ const referencedFiles = [
 	'preferences-fullvahti.js',
 	'icons/zotpdf-48.svg',
 	'LICENSE-FULLVAHTI',
+	'LICENSE-LUCIDE',
 	'NOTICE'
 ];
 for (const file of referencedFiles) {
