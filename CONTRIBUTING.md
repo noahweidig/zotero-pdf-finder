@@ -131,7 +131,7 @@ The docs are built with [Zensical](https://zensical.org): `zensical.toml` is the
 `docs/*.md` the pages (icons are the bundled Lucide set, e.g. `:lucide-file-down:`).
 
 ```bash
-pip install --only-binary :all: -r docs/requirements.txt
+pip install --require-hashes --only-binary=:all: -r docs/requirements.txt
 zensical serve          # live preview at http://localhost:8000
 zensical build --clean  # writes site/
 ```
