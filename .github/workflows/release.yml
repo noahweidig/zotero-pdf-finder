@@ -1,12 +1,19 @@
 name: Release
 
-# Tag a release to publish it:
-#   bump "version" in manifest.json and package.json, commit, then git tag -a v0.3.1 -m 0.3.1 && git push --follow-tags
-# The manifest version must match the tag.
+# Releases publish three ways:
+#   - merge a change to manifest.json (bump "version" in manifest.json and package.json) into main;
+#     the job creates tag v<version> and the release if that tag does not exist yet
+#   - run this workflow by hand from the Actions tab
+#   - push a v* tag; the tag must match the manifest version
 on:
   push:
     tags:
       - 'v*'
+    branches: [main]
+    paths:
+      - manifest.json
+      - .github/workflows/release.yml
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -26,40 +33,56 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Check that the tag matches manifest.json
+      - name: Work out the release version
+        id: version
         run: |
           MANIFEST_VERSION=$(node -p "require('./manifest.json').version")
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          if [ "$MANIFEST_VERSION" != "$TAG_VERSION" ]; then
-            echo "Tag $TAG_VERSION does not match manifest.json version $MANIFEST_VERSION"
-            exit 1
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+            if [ "$MANIFEST_VERSION" != "$TAG_VERSION" ]; then
+              echo "Tag $TAG_VERSION does not match manifest.json version $MANIFEST_VERSION"
+              exit 1
+            fi
+          fi
+          echo "tag=v$MANIFEST_VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" != "tag" ] && git ls-remote --exit-code --tags origin "refs/tags/v$MANIFEST_VERSION" >/dev/null; then
+            echo "Tag v$MANIFEST_VERSION already exists; nothing to release"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - run: npm run lint
+      - if: steps.version.outputs.skip != 'true'
+        run: npm run lint
       - run: npm test
 
       - name: Build XPI
+        if: steps.version.outputs.skip != 'true'
         id: build
         run: echo "xpi=$(npm run --silent build)" >> "$GITHUB_OUTPUT"
 
       - name: Generate update.json
+        if: steps.version.outputs.skip != 'true'
         run: node scripts/update-manifest.js "${{ steps.build.outputs.xpi }}"
 
       # A copy without the version in its name, so the README can link to
       # releases/latest/download/zotpdf.xpi and never go stale.
       # update.json keeps pointing at the versioned file, whose hash it records.
       - name: Add a stable-name copy
+        if: steps.version.outputs.skip != 'true'
         run: cp "${{ steps.build.outputs.xpi }}" build/zotpdf.xpi
 
       - name: Publish release
+        if: steps.version.outputs.skip != 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           files: |
             ${{ steps.build.outputs.xpi }}
             build/zotpdf.xpi
           generate_release_notes: true
 
       - name: Commit update.json
+        if: steps.version.outputs.skip != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
