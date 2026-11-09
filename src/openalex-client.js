@@ -1,6 +1,6 @@
 /*
- * Zotero OpenAlex PDF Finder — OpenAlex API client.
- * Copyright (c) 2026 Littview Inc. — MIT licensed. See LICENSE.
+ * ZotPDF — OpenAlex API client.
+ * Based on OpenAlex PDF Finder, Copyright (c) 2026 Littview Inc. — MIT. See LICENSE.
  *
  * Two hosts are involved:
  *   api.openalex.org      metadata; works without a key (small daily credit
@@ -11,7 +11,7 @@
  * parameter so that it never ends up in a URL we might store on an item or log.
  */
 
-ZoteroOpenAlex.API = {
+ZotPDF.API = {
 	BASE: 'https://api.openalex.org',
 	CONTENT_BASE: 'https://content.openalex.org',
 
@@ -53,7 +53,7 @@ ZoteroOpenAlex.API = {
 	},
 
 	_authHeaders() {
-		let key = ZoteroOpenAlex.getAPIKey();
+		let key = ZotPDF.getAPIKey();
 		return key && !this.keyRejected ? { Authorization: 'Bearer ' + key } : {};
 	},
 
@@ -62,7 +62,7 @@ ZoteroOpenAlex.API = {
 	 * custom User-Agent, which XHR will not let us set anyway.
 	 */
 	_withMailto(url) {
-		let email = (ZoteroOpenAlex.getPref('email') || '').trim();
+		let email = (ZotPDF.getPref('email') || '').trim();
 		if (!email) {
 			return url;
 		}
@@ -89,7 +89,7 @@ ZoteroOpenAlex.API = {
 			}
 			catch (e) {
 				if (e instanceof Zotero.HTTP.BrowserOfflineException) {
-					throw this.error('offline', ZoteroOpenAlex.getString('openalex-pdf-error-offline'));
+					throw this.error('offline', ZotPDF.getString('zotpdf-error-offline'));
 				}
 				throw this.error('http', e.message || String(e));
 			}
@@ -97,13 +97,13 @@ ZoteroOpenAlex.API = {
 			if (xhr.status === 429) {
 				if (attempt++ >= this.MAX_RETRIES) {
 					throw this.error('rate-limit',
-						ZoteroOpenAlex.getString('openalex-pdf-error-rate-limit'), 429);
+						ZotPDF.getString('zotpdf-error-rate-limit'), 429);
 				}
 				let retryAfter = parseInt(xhr.getResponseHeader('Retry-After'), 10);
 				if (!(retryAfter > 0) || retryAfter > 60) {
 					retryAfter = Math.min(30, 5 * attempt);
 				}
-				ZoteroOpenAlex.log(`Rate limited; retrying in ${retryAfter}s`);
+				ZotPDF.log(`Rate limited; retrying in ${retryAfter}s`);
 				await this.delay(retryAfter * 1000);
 				continue;
 			}
@@ -113,11 +113,11 @@ ZoteroOpenAlex.API = {
 				// rather than break it. Content downloads have no such fallback.
 				if (sentKey && options.anonymousFallback && !this.keyRejected) {
 					this.keyRejected = true;
-					ZoteroOpenAlex.log('API key rejected — continuing without it');
+					ZotPDF.log('API key rejected — continuing without it');
 					continue;
 				}
 				throw this.error('auth',
-					ZoteroOpenAlex.getString('openalex-pdf-error-auth'), xhr.status);
+					ZotPDF.getString('zotpdf-error-auth'), xhr.status);
 			}
 
 			return xhr;
@@ -255,8 +255,8 @@ ZoteroOpenAlex.API = {
 		if (!url) {
 			throw this.error('invalid', 'Work has no OpenAlex content URL');
 		}
-		if (!ZoteroOpenAlex.getAPIKey() || this.keyRejected) {
-			throw this.error('auth', ZoteroOpenAlex.getString('openalex-pdf-error-auth'), 401);
+		if (!ZotPDF.getAPIKey() || this.keyRejected) {
+			throw this.error('auth', ZotPDF.getString('zotpdf-error-auth'), 401);
 		}
 
 		let xhr = await this._get(url, { responseType: 'arraybuffer', timeout: 120000 });

@@ -26,13 +26,13 @@ test("rejects when writeback is disabled (default)", async () => {
 });
 
 test("rejects a missing or wrong token", async () => {
-	const post = tagEndpoint({ prefs: { "extensions.fullvahti.writebackEnabled": true, "extensions.fullvahti.writebackToken": "secret" } });
+	const post = tagEndpoint({ prefs: { "extensions.zotero.zotpdf.writebackEnabled": true, "extensions.zotero.zotpdf.writebackToken": "secret" } });
 	assert.equal((await post({ token: "nope", itemKey: "K", add: ["cite:x"] }))[0], 403);
 	assert.equal((await post({ itemKey: "K", add: ["cite:x"] }))[0], 403);
 });
 
 test("rejects a malformed body", async () => {
-	const post = tagEndpoint({ prefs: { "extensions.fullvahti.writebackEnabled": true, "extensions.fullvahti.writebackToken": "secret" } });
+	const post = tagEndpoint({ prefs: { "extensions.zotero.zotpdf.writebackEnabled": true, "extensions.zotero.zotpdf.writebackToken": "secret" } });
 	const [code] = await post({ token: "secret", itemKey: "K" }); // neither add nor remove
 	assert.equal(code, 400);
 });
@@ -53,7 +53,7 @@ test("allowlist is exactly the documented Vahtian namespace", () => {
 test("rejects tags outside the Vahtian namespace", async () => {
 	const item = makeItem({}, { key: "K" });
 	const post = tagEndpoint({
-		prefs: { "extensions.fullvahti.writebackEnabled": true, "extensions.fullvahti.writebackToken": "secret" },
+		prefs: { "extensions.zotero.zotpdf.writebackEnabled": true, "extensions.zotero.zotpdf.writebackToken": "secret" },
 		item,
 	});
 	const [code, , body] = await post({ token: "secret", itemKey: "K", add: ["cite:ok", "evil:tag"] });
@@ -67,14 +67,14 @@ test("rejects tags outside the Vahtian namespace", async () => {
 test("rejects an empty-string tag", async () => {
 	const item = makeItem({}, { key: "K" });
 	const post = tagEndpoint({
-		prefs: { "extensions.fullvahti.writebackEnabled": true, "extensions.fullvahti.writebackToken": "secret" },
+		prefs: { "extensions.zotero.zotpdf.writebackEnabled": true, "extensions.zotero.zotpdf.writebackToken": "secret" },
 		item,
 	});
 	assert.equal((await post({ token: "secret", itemKey: "K", add: [""] }))[0], 400);
 });
 
 test("404 when the item key is unknown", async () => {
-	const post = tagEndpoint({ prefs: { "extensions.fullvahti.writebackEnabled": true, "extensions.fullvahti.writebackToken": "secret" } });
+	const post = tagEndpoint({ prefs: { "extensions.zotero.zotpdf.writebackEnabled": true, "extensions.zotero.zotpdf.writebackToken": "secret" } });
 	const [code] = await post({ token: "secret", itemKey: "MISSING", add: ["cite:x"] });
 	assert.equal(code, 404);
 });
@@ -82,7 +82,7 @@ test("404 when the item key is unknown", async () => {
 test("applies allowed add/remove with a valid token", async () => {
 	const item = makeItem({}, { key: "K", tags: ["fulltext:pdf-missing"] });
 	const post = tagEndpoint({
-		prefs: { "extensions.fullvahti.writebackEnabled": true, "extensions.fullvahti.writebackToken": "secret" },
+		prefs: { "extensions.zotero.zotpdf.writebackEnabled": true, "extensions.zotero.zotpdf.writebackToken": "secret" },
 		item,
 	});
 	const [code, , body] = await post({
@@ -102,8 +102,8 @@ test("applies allowed add/remove with a valid token", async () => {
 // These share one sandbox so the audit log persists across calls.
 // ---------------------------------------------------------------------------
 const WB_PREFS = {
-	"extensions.fullvahti.writebackEnabled": true,
-	"extensions.fullvahti.writebackToken": "secret",
+	"extensions.zotero.zotpdf.writebackEnabled": true,
+	"extensions.zotero.zotpdf.writebackToken": "secret",
 };
 
 function writebackHarness(item) {
@@ -141,7 +141,7 @@ test("dryRun previews the effective change without writing", async () => {
 	assert.deepEqual(body.preview.alreadyAbsent, ["fulltext:pdf-missing"]);
 	// Nothing was written, and no audit record was created.
 	assert.ok(!item._tags.has("GRADE:high"));
-	assert.equal(h.prefStore["extensions.fullvahti.auditLog"], undefined);
+	assert.equal(h.prefStore["extensions.zotero.zotpdf.auditLog"], undefined);
 });
 
 test("an applied write creates an audit record retrievable via /fullvahti/audit", async () => {

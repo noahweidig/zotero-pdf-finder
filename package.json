@@ -1,12 +1,13 @@
 {
 	"name": "zotpdf",
-	"version": "0.4.0",
+	"version": "0.5.0",
 	"description": "Zotero plugin: open-access PDF finder (OpenAlex + FullVahti), retraction and citation checks",
 	"license": "MIT AND Apache-2.0",
 	"private": true,
 	"scripts": {
 		"build": "bash scripts/build.sh",
 		"lint": "node scripts/check.js",
-		"test": "node --test"
+		"test": "node --test",
+		"docs": "node scripts/build-docs.js"
 	}
 }

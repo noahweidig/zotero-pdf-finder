@@ -1,0 +1,18 @@
+<h1>Privacy and data</h1>
+<p>Zotero metadata is read locally. Nothing from your library is stored anywhere else, there are no accounts and no analytics.</p>
+
+<table>
+  <tr><th>Service</th><th>Receives</th><th>For</th></tr>
+  <tr><td>Unpaywall</td><td>DOI, contact email</td><td>Open-access PDF locations</td></tr>
+  <tr><td>NCBI (PubMed, PMC)</td><td>DOI or PMID, contact email</td><td>PMC IDs, OA subset, retraction status</td></tr>
+  <tr><td>Europe PMC</td><td>PMCID</td><td>PDF fallback for OA-subset records</td></tr>
+  <tr><td>OpenAlex</td><td>DOI, PMID, arXiv ID or title; contact email; API key if set</td><td>Matching and PDF links</td></tr>
+  <tr><td>Crossref</td><td>DOI, contact email</td><td>Retraction Watch data, metadata comparison</td></tr>
+  <tr><td>PDF host sites</td><td>The PDF URL only. No email.</td><td>Downloading</td></tr>
+</table>
+
+<ul>
+  <li>The contact email goes only to the services above, which ask for one so they can reach heavy users.</li>
+  <li>The OpenAlex key is sent as an Authorization header, never in a URL, and is never saved on an attachment.</li>
+  <li>The write-back endpoint is off by default and listens only on your computer.</li>
+</ul>

@@ -1,0 +1,30 @@
+<h1>How it works</h1>
+
+<h2>The PDF chain</h2>
+<p>For each item ZotPDF extracts a DOI, PMID and PMCID, then tries sources in order and stops at the first real PDF.</p>
+<table>
+  <tr><th>#</th><th>Source</th><th>What it needs</th><th>Notes</th></tr>
+  <tr><td>0</td><td>Existing attachment</td><td>nothing</td><td>Item is tagged found and skipped.</td></tr>
+  <tr><td>1</td><td>Unpaywall</td><td>DOI</td><td>Tries every open-access location with a direct PDF link, best first.</td></tr>
+  <tr><td>2</td><td>PubMed Central</td><td>PMID or PMCID</td><td>Only the PMC Open Access Subset through the official OA service, with Europe PMC as a fallback for the same record. PMC pages are never scraped.</td></tr>
+  <tr><td>3</td><td>OpenAlex links</td><td>DOI, PMID, arXiv ID or title</td><td>Locations OpenAlex marks open access with a direct PDF URL. Published versions before accepted before submitted.</td></tr>
+  <tr><td>4</td><td>OpenAlex hosted</td><td>API key</td><td>Optional. About $0.01 a file, roughly 100 a day free. Tried before step 3 if you turn on "prefer hosted".</td></tr>
+  <tr><td>5</td><td>Publisher pages</td><td>none</td><td>Optional, on by default. Zotero's own downloader and translators, using your browser session and institutional access. Turn off to stay strictly open access.</td></tr>
+</table>
+<p>Every download is checked: the bytes must start with <code>%PDF-</code> and be between 10 KB and 100 MB. Publisher error pages and login stubs are rejected.</p>
+
+<h2>Matching items to OpenAlex</h2>
+<table>
+  <tr><th>Item has</th><th>Lookup</th><th>Accepted when</th></tr>
+  <tr><td>DOI (field or <code>DOI:</code> in Extra)</td><td><code>filter=doi:…</code></td><td>Always</td></tr>
+  <tr><td>arXiv ID in Extra or URL</td><td>Converted to <code>10.48550/arxiv.&lt;id&gt;</code></td><td>Always; arXiv's own PDF is also used</td></tr>
+  <tr><td><code>PMID:</code> in Extra</td><td><code>filter=pmid:…</code></td><td>Always</td></tr>
+  <tr><td>None of those</td><td><code>filter=title.search:…</code></td><td>Normalized titles are identical and years differ by at most 1</td></tr>
+</table>
+<p>Normalization casefolds, strips accents and removes punctuation. A wrong PDF on the wrong reference is worse than none, so near-matches are reported, never attached.</p>
+
+<h2>Duplicates and politeness</h2>
+<p>Items sharing a DOI, PMID or PMCID in one run are fetched once; the others are tagged to match. Every outgoing request is preceded by a short pause (400 ms by default), within NCBI's limit of 3 requests a second without a key. A 429 from OpenAlex triggers a bounded retry.</p>
+
+<h2>Cost model</h2>
+<p>OpenAlex meters its API by credit with a free daily allowance that resets at midnight UTC. Metadata lookups are cheap (a 1,000-reference review uses about 20 requests). Only the optional hosted download costs real credits, and a rejected key degrades to anonymous metadata access instead of failing.</p>

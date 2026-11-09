@@ -1,74 +1,141 @@
 <!--
-	Zotero OpenAlex PDF Finder — preference pane.
-	Copyright (c) 2026 Littview Inc. — MIT licensed. See LICENSE.
+	ZotPDF — preference pane.
+	Based on OpenAlex PDF Finder (Littview Inc., MIT) and FullVahti (Heidi Andersén, Apache-2.0).
 
 	Loaded as a XUL fragment: XUL is the default namespace, HTML lives under html:.
 -->
-<vbox id="openalex-pdf-prefpane">
+<vbox id="zotpdf-prefpane" onload="ZotPDFPrefs.init(this)">
 	<linkset>
-		<html:link rel="localization" href="openalex-pdf.ftl"/>
+		<html:link rel="localization" href="zotpdf.ftl"/>
 	</linkset>
 
 	<vbox class="main-section">
-		<groupbox aria-labelledby="openalex-pdf-account-title">
-			<label>
-				<html:h2 id="openalex-pdf-account-title" data-l10n-id="openalex-pdf-prefs-account-header"/>
-			</label>
+		<groupbox>
+			<label><html:h2>You</html:h2></label>
 
 			<hbox align="center">
-				<label data-l10n-id="openalex-pdf-prefs-email-label" control="openalex-pdf-email"/>
-				<html:input type="text" id="openalex-pdf-email" class="flex-1"
-						preference="extensions.zotero.openalexpdf.email"/>
+				<label value="Contact email:" control="zotpdf-email"/>
+				<html:input type="text" id="zotpdf-email" class="flex-1"
+						preference="extensions.zotero.zotpdf.email"/>
 			</hbox>
-			<description class="description" data-l10n-id="openalex-pdf-prefs-email-description"/>
+			<description class="description">
+				The free services ZotPDF queries ask for a contact address. It goes only to
+				them (Unpaywall, NCBI, Europe PMC, Crossref, OpenAlex), never to us. ZotPDF
+				asks once on the first run if this is empty.
+			</description>
 
 			<hbox align="center">
-				<label data-l10n-id="openalex-pdf-prefs-apikey-label" control="openalex-pdf-apikey"/>
-				<html:input type="password" id="openalex-pdf-apikey" class="flex-1"
-						preference="extensions.zotero.openalexpdf.apiKey"/>
-				<button data-l10n-id="openalex-pdf-prefs-apikey-test" native="true"
-						oncommand="ZoteroOpenAlexPrefs.testKey()"/>
-				<button data-l10n-id="openalex-pdf-prefs-apikey-get" native="true"
-						oncommand="ZoteroOpenAlexPrefs.openKeyPage()"/>
+				<label value="OpenAlex API key:" control="zotpdf-apikey"/>
+				<html:input type="password" id="zotpdf-apikey" class="flex-1"
+						preference="extensions.zotero.zotpdf.apiKey"/>
+				<button label="Test" native="true" oncommand="ZotPDFPrefs.testKey()"/>
+				<button label="Get a key…" native="true" oncommand="ZotPDFPrefs.openKeyPage()"/>
 			</hbox>
-			<description class="description" id="openalex-pdf-apikey-status"/>
-			<description class="description" data-l10n-id="openalex-pdf-prefs-apikey-description"/>
+			<description class="description" id="zotpdf-apikey-status"/>
+			<description class="description">
+				Optional. Only OpenAlex-hosted downloads need a key; everything else works
+				without one. Free at openalex.org/settings/api. Stored in your Zotero
+				profile, not in your library.
+			</description>
 		</groupbox>
 
-		<groupbox aria-labelledby="openalex-pdf-sources-title">
-			<label>
-				<html:h2 id="openalex-pdf-sources-title" data-l10n-id="openalex-pdf-prefs-sources-header"/>
-			</label>
+		<groupbox>
+			<label><html:h2>Where ZotPDF looks for PDFs</html:h2></label>
+			<description class="description">
+				Every item goes through the same chain and stops at the first PDF it can
+				download: 1. Unpaywall, 2. PubMed Central (open-access subset),
+				3. OpenAlex open-access links, 4. OpenAlex-hosted full text, 5. publisher
+				pages through Zotero's downloader. Steps 4 and 5 are optional.
+			</description>
 
-			<checkbox data-l10n-id="openalex-pdf-prefs-hosted" native="true"
-					preference="extensions.zotero.openalexpdf.useHostedContent"/>
-			<description class="description" data-l10n-id="openalex-pdf-prefs-hosted-description"/>
+			<checkbox label="Use OpenAlex-hosted full text (needs an API key)" native="true"
+					preference="extensions.zotero.zotpdf.useHostedContent"/>
+			<description class="description">
+				About 60 million open-access works. A free key covers roughly 100 of these
+				downloads a day; links from publishers and repositories never count against it.
+			</description>
 
-			<checkbox data-l10n-id="openalex-pdf-prefs-prefer-hosted" native="true"
-					preference="extensions.zotero.openalexpdf.preferHostedContent"/>
-			<description class="description" data-l10n-id="openalex-pdf-prefs-prefer-hosted-description"/>
+			<checkbox label="Try the OpenAlex-hosted copy before open-access links" native="true"
+					preference="extensions.zotero.zotpdf.preferHostedContent"/>
+
+			<checkbox label="Last resort: try publisher pages through Zotero's downloader" native="true"
+					preference="extensions.zotero.zotpdf.tryPublisherPages"/>
+			<description class="description">
+				Uses your own browser session and institutional access, the same as
+				Zotero's built-in "Find Available PDF". Turn off to stay strictly open access.
+			</description>
+
+			<checkbox label="Look up items without a DOI or PMID by title" native="true"
+					preference="extensions.zotero.zotpdf.titleSearchFallback"/>
+			<description class="description">
+				Accepted only when the titles match exactly apart from punctuation and the
+				years differ by at most one.
+			</description>
+
+			<checkbox label="Record the matched OpenAlex work ID in the Extra field" native="true"
+					preference="extensions.zotero.zotpdf.saveWorkIDToExtra"/>
 		</groupbox>
 
-		<groupbox aria-labelledby="openalex-pdf-matching-title">
-			<label>
-				<html:h2 id="openalex-pdf-matching-title" data-l10n-id="openalex-pdf-prefs-matching-header"/>
-			</label>
-
-			<checkbox data-l10n-id="openalex-pdf-prefs-title-search" native="true"
-					preference="extensions.zotero.openalexpdf.titleSearchFallback"/>
-			<description class="description" data-l10n-id="openalex-pdf-prefs-title-search-description"/>
-
-			<checkbox data-l10n-id="openalex-pdf-prefs-skip" native="true"
-					preference="extensions.zotero.openalexpdf.skipItemsWithPDF"/>
-
-			<checkbox data-l10n-id="openalex-pdf-prefs-extra" native="true"
-					preference="extensions.zotero.openalexpdf.saveWorkIDToExtra"/>
+		<groupbox>
+			<label><html:h2>Batch runs</html:h2></label>
+			<description class="description">
+				Tag a set of references, then run a check on all of them from the buttons
+				below or the Tools → ZotPDF menu. Right-click → ZotPDF acts on the selection.
+			</description>
+			<hbox align="center">
+				<label value="Batch tag:" control="zotpdf-trigger"/>
+				<html:input type="text" id="zotpdf-trigger" style="width: 14em"
+						preference="extensions.zotero.zotpdf.triggerTag"/>
+			</hbox>
+			<hbox align="center">
+				<button id="zotpdf-find-run" label="Find PDFs"/>
+				<button id="zotpdf-retract-run" label="Check retractions"/>
+				<button id="zotpdf-citation-run" label="Check citation metadata"/>
+			</hbox>
+			<checkbox label="After retraction and metadata checks, save one report note" native="true"
+					preference="extensions.zotero.zotpdf.reportNote"/>
+			<description class="description">
+				Finding PDFs never creates notes. Each item gets a tag instead:
+				fulltext:pdf-found, fulltext:pdf-missing or fulltext:check-needed.
+			</description>
 		</groupbox>
 
-		<description class="description" id="openalex-pdf-about" style="margin-top: 1.5em">
-			<html:span data-l10n-id="openalex-pdf-prefs-about"/>
-			<label is="text-link" data-l10n-id="openalex-pdf-prefs-about-link" style="margin-inline-start: 0.3em"
-					onclick="ZoteroOpenAlexPrefs.openLittview()"/>
+		<groupbox>
+			<label><html:h2>Retractions and citation metadata</html:h2></label>
+			<description class="description">
+				Retractions are read from PubMed and from Crossref (which carries the
+				Retraction Watch database); ZotPDF never decides retraction itself.
+				Metadata is compared against Crossref and flags missing fields and
+				mismatches, which can mean the wrong DOI is attached. Read-only: ZotPDF
+				changes no field.
+			</description>
+		</groupbox>
+
+		<groupbox>
+			<label><html:h2>CiteVahti write-back (advanced)</html:h2></label>
+			<description class="description">
+				Lets CiteVahti on this computer write status tags into your library through
+				a token-guarded local endpoint. Off by default. Only allowlisted tags can be
+				written, every write is previewed and recorded in a local audit log, and
+				each can be undone.
+			</description>
+			<checkbox id="zotpdf-writeback" label="Allow CiteVahti to write tags (local only, token required)" native="true"
+					preference="extensions.zotero.zotpdf.writebackEnabled"/>
+			<hbox align="center">
+				<label value="Token:" control="zotpdf-token-display"/>
+				<html:input id="zotpdf-token-display" type="text" readonly="readonly" class="flex-1"/>
+				<button id="zotpdf-token-generate" label="Generate"/>
+				<button id="zotpdf-token-copy" label="Copy"/>
+			</hbox>
+			<hbox align="center">
+				<button id="zotpdf-test-connection" label="Test connection"/>
+				<button id="zotpdf-view-audit" label="View audit log"/>
+			</hbox>
+		</groupbox>
+
+		<description class="description" style="margin-top: 1.5em">
+			ZotPDF combines OpenAlex PDF Finder by Littview (MIT) and FullVahti by
+			Heidi Andersén / Vahtian (Apache-2.0). Free and open source.
 		</description>
 	</vbox>
 </vbox>

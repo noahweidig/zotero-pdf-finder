@@ -15,7 +15,7 @@ let failures = [];
 const fail = message => failures.push(message);
 
 // 1. Syntax
-const sources = ['bootstrap.js', 'preferences.js', 'preferences-fullvahti.js', 'prefs.js']
+const sources = ['bootstrap.js', 'preferences.js', 'prefs.js']
 	.concat(fs.readdirSync(path.join(root, 'src')).map(f => path.join('src', f)));
 for (const file of sources) {
 	try {
@@ -34,7 +34,7 @@ if (manifest.version !== pkg.version) {
 }
 
 // 3. Fluent IDs
-const ftl = read('locale/en-US/openalex-pdf.ftl');
+const ftl = read('locale/en-US/zotpdf.ftl');
 const defined = new Set([...ftl.matchAll(/^([a-z][a-z0-9-]*) =/gm)].map(m => m[1]));
 
 const referenced = new Set();
@@ -44,11 +44,12 @@ for (const file of sources) {
 	for (const m of source.matchAll(/l10nID: '([a-z][a-z0-9-]*)'/g)) referenced.add(m[1]);
 	for (const m of source.matchAll(/setAttributes\([^,]+, '([a-z][a-z0-9-]*)'/g)) referenced.add(m[1]);
 	// Progress-queue title/columns are passed to Zotero.getString() as bare strings
-	for (const m of source.matchAll(/'(openalex-pdf-progress-[a-z0-9-]+)'/g)) referenced.add(m[1]);
+	for (const m of source.matchAll(/'(zotpdf-progress-[a-z0-9-]*[a-z0-9])'/g)) referenced.add(m[1]);
 }
 for (const m of read('preferences.xhtml').matchAll(/data-l10n-id="([^"]+)"/g)) {
 	referenced.add(m[1]);
 }
+for (const kind of ['find', 'retraction', 'citation']) referenced.add('zotpdf-progress-title-' + kind);
 for (const id of referenced) {
 	if (!defined.has(id)) {
 		fail(`missing Fluent message: ${id}`);
@@ -61,10 +62,7 @@ const referencedFiles = [
 	'icons/zotpdf-16.svg',
 	'preferences.xhtml',
 	'preferences.js',
-	'preferences-fullvahti.xhtml',
-	'preferences-fullvahti.js',
-	'icons/zotpdf-48.svg',
-	'LICENSE-FULLVAHTI',
+		'LICENSE-FULLVAHTI',
 	'LICENSE-LUCIDE',
 	'NOTICE'
 ];

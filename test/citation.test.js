@@ -104,7 +104,7 @@ test("citation report shows mismatch values and missing-field lists", async () =
 	assert.match(html, /yours .*Mine.* · Crossref .*Theirs/);
 	assert.match(html, /Missing fields \(1\)/);
 	assert.match(html, /missing: journal, year/);
-	assert.ok(notes[0]._tags.includes("fullvahti:report"));
+	assert.ok(notes[0]._tags.includes("zotpdf:report"));
 });
 
 test("citation: prefix is allowlisted for writeback", () => {
