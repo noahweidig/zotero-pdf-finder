@@ -1,0 +1,45 @@
+<h1>How it works</h1>
+
+<h2>The PDF chain</h2>
+<p>For each item ZotPDF extracts a DOI, PMID, PMCID and arXiv ID, then tries sources in order and stops at the first real PDF. Every source is free and legal. Each can be switched off in <a href="settings.html">Settings</a>.</p>
+<table>
+  <tr><th>#</th><th>Source</th><th>Looks up by</th><th>Notes</th></tr>
+  <tr><td>0</td><td>Existing attachment</td><td>nothing</td><td>The item is tagged found and skipped.</td></tr>
+  <tr><td>1</td><td>Unpaywall</td><td>DOI</td><td>Every open-access location with a direct PDF link, best first. Landing-page-only locations are kept for step 14.</td></tr>
+  <tr><td>2</td><td>PubMed Central</td><td>PMCID, PMID or DOI</td><td>The PMC cloud dataset: published version first, author manuscript (license <code>TDM</code>) otherwise. DOI and PMID are converted to a PMCID first.</td></tr>
+  <tr><td>3</td><td>Europe PMC</td><td>DOI, PMID or title</td><td>Free and open-access PDFs from its full-text list, which includes author manuscripts.</td></tr>
+  <tr><td>4</td><td>Semantic Scholar</td><td>DOI, PMID, arXiv ID or title</td><td>Its <code>openAccessPdf</code> link. Optional key raises rate limits.</td></tr>
+  <tr><td>5</td><td>Crossref</td><td>DOI (or title)</td><td>Publisher PDF links, but only when the record carries an open license. Also follows links to preprints.</td></tr>
+  <tr><td>6</td><td>CORE</td><td>DOI or title</td><td>Institutional-repository copies. Optional key.</td></tr>
+  <tr><td>7</td><td>OpenAIRE</td><td>DOI or title</td><td>Only products OpenAIRE itself rates open.</td></tr>
+  <tr><td>8</td><td>Preprint servers and data repositories</td><td>DOI prefix, arXiv ID</td><td>arXiv, bioRxiv, medRxiv, OSF Preprints (and PsyArXiv, SocArXiv, MetaArXiv, EarthArXiv), PeerJ Preprints, Zenodo (open records, PDF files), Figshare.</td></tr>
+  <tr><td>9</td><td>HAL</td><td>DOI or title</td><td>The French national open archive.</td></tr>
+  <tr><td>10</td><td>DOAJ</td><td>DOI</td><td>Full-text links of open-access journals.</td></tr>
+  <tr><td>11</td><td>OpenAlex links</td><td>DOI, PMID, arXiv ID or title</td><td>Locations OpenAlex marks open access with a direct PDF URL. Published before accepted before submitted.</td></tr>
+  <tr><td>12</td><td>OpenAlex hosted</td><td>needs an API key</td><td>Optional. About $0.01 a file, roughly 100 a day free. Tried before step 11 if you turn on "prefer hosted".</td></tr>
+  <tr><td>13</td><td>Internet Archive</td><td>any dead link above</td><td>If a link from steps 1 to 11 fails, ZotPDF retries the Archive's copy of the same URL.</td></tr>
+  <tr><td>14</td><td>Free-to-read pages</td><td>landing pages collected above</td><td>Optional, on by default. Zotero's own downloader and translators, using your browser session and institutional access.</td></tr>
+</table>
+<p>Every download is checked: the bytes must start with <code>%PDF-</code> and be between 10 KB and 100 MB. Error pages and login stubs are rejected. The result column in the progress window names the source that worked, for example <em>PDF attached (CORE)</em>.</p>
+
+<h3>Learning a DOI from a title</h3>
+<p>If an item has only a title, Europe PMC, Semantic Scholar, Crossref, CORE, OpenAIRE and HAL can each match it by exact title (casefolded, accents and punctuation removed) with a year within one. The first match supplies a DOI that the sources after it use. A near-match is never accepted.</p>
+
+<h3>If a source is down</h3>
+<p>A source that errors or rate-limits is skipped and named in the result ("CORE unavailable"). After an HTTP 429 it rests for a minute so a big batch does not hammer it; a free key for Semantic Scholar or CORE avoids most of this. The item is tagged <span class="tag">check-needed</span> only when every extra source failed, which points at a network problem, or when a source listed a PDF link that would not download.</p>
+
+<h2>Matching items to OpenAlex</h2>
+<table>
+  <tr><th>Item has</th><th>Lookup</th><th>Accepted when</th></tr>
+  <tr><td>DOI (field or <code>DOI:</code> in Extra)</td><td><code>filter=doi:…</code></td><td>Always</td></tr>
+  <tr><td>arXiv ID in Extra or URL</td><td>Converted to <code>10.48550/arxiv.&lt;id&gt;</code></td><td>Always; arXiv's own PDF is also used</td></tr>
+  <tr><td><code>PMID:</code> in Extra</td><td><code>filter=pmid:…</code></td><td>Always</td></tr>
+  <tr><td>None of those</td><td><code>filter=title.search:…</code></td><td>Normalized titles are identical and years differ by at most 1</td></tr>
+</table>
+<p>Normalization casefolds, strips accents and removes punctuation. A wrong PDF on the wrong reference is worse than none, so near-matches are reported, never attached.</p>
+
+<h2>Duplicates and politeness</h2>
+<p>Items sharing a DOI, PMID or PMCID in one run are fetched once; the others are tagged to match. Every outgoing request is preceded by a short pause (400 ms by default), within NCBI's limit of 3 requests a second without a key. A 429 from OpenAlex triggers a bounded retry.</p>
+
+<h2>Cost model</h2>
+<p>OpenAlex meters its API by credit with a free daily allowance that resets at midnight UTC. Metadata lookups are cheap (a 1,000-reference review uses about 20 requests). Only the optional hosted download costs real credits, and a rejected key degrades to anonymous metadata access instead of failing.</p>

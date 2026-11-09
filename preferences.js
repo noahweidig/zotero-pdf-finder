@@ -1,27 +1,37 @@
 /*
- * Zotero OpenAlex PDF Finder — preference pane script.
- * Copyright (c) 2026 Littview Inc. — MIT licensed. See LICENSE.
+ * ZotPDF — preference pane script.
+ * Portions derived from MIT- and Apache-2.0-licensed works; see LICENSE, LICENSE-APACHE and NOTICE.
  *
- * Runs in the preferences window, which has Zotero but not the plugin sandbox,
- * so the key check is implemented here rather than delegated to the plugin.
+ * Runs in the preferences window, which has Zotero but not the plugin sandbox, so the
+ * key check is implemented here. The write-back and batch buttons are wired by the
+ * engine (Zotero.ZotPDF.Engine.prefsInit), which lives in the stable plugin scope.
  */
 
-var ZoteroOpenAlexPrefs = {
+var ZotPDFPrefs = {
 	KEY_PAGE: 'https://openalex.org/settings/api',
-	LITTVIEW_PAGE: 'https://www.littview.com/?utm_source=zotero&utm_medium=plugin&utm_campaign=zotero-openalex-pdf',
 	RATE_LIMIT_URL: 'https://api.openalex.org/rate-limit',
-	PREF_API_KEY: 'extensions.zotero.openalexpdf.apiKey',
+	PREF_API_KEY: 'extensions.zotero.zotpdf.apiKey',
 
 	openKeyPage() {
 		Zotero.launchURL(this.KEY_PAGE);
 	},
 
-	openLittview() {
-		Zotero.launchURL(this.LITTVIEW_PAGE);
+	// Hands the live pane root to the engine, which fills the token field and binds
+	// the buttons against that document (the pane's scope is rebuilt on every open).
+	init(root) {
+		try {
+			let engine = Zotero.ZotPDF && Zotero.ZotPDF.Engine;
+			if (engine && engine.prefsInit) {
+				engine.prefsInit(root);
+			}
+		}
+		catch (e) {
+			Zotero.debug('ZotPDF prefs: ' + e);
+		}
 	},
 
 	_setStatus(id, args) {
-		let elem = document.getElementById('openalex-pdf-apikey-status');
+		let elem = document.getElementById('zotpdf-apikey-status');
 		if (elem) {
 			document.l10n.setAttributes(elem, id, args);
 		}
@@ -30,14 +40,14 @@ var ZoteroOpenAlexPrefs = {
 	async testKey() {
 		// Read the field rather than the pref: the pref is only written on "change", so a
 		// key pasted and tested straight away would otherwise test the old value
-		let input = document.getElementById('openalex-pdf-apikey');
+		let input = document.getElementById('zotpdf-apikey');
 		let key = ((input ? input.value : Zotero.Prefs.get(this.PREF_API_KEY, true)) || '').trim();
 		if (!key) {
-			this._setStatus('openalex-pdf-prefs-apikey-empty');
+			this._setStatus('zotpdf-prefs-apikey-empty');
 			return;
 		}
 
-		this._setStatus('openalex-pdf-prefs-apikey-testing');
+		this._setStatus('zotpdf-prefs-apikey-testing');
 
 		let xhr;
 		try {
@@ -51,16 +61,16 @@ var ZoteroOpenAlexPrefs = {
 		}
 		catch (e) {
 			Zotero.logError(e);
-			this._setStatus('openalex-pdf-prefs-apikey-error');
+			this._setStatus('zotpdf-prefs-apikey-error');
 			return;
 		}
 
 		if (xhr.status === 401 || xhr.status === 403) {
-			this._setStatus('openalex-pdf-prefs-apikey-invalid');
+			this._setStatus('zotpdf-prefs-apikey-invalid');
 			return;
 		}
 		if (xhr.status < 200 || xhr.status >= 300) {
-			this._setStatus('openalex-pdf-prefs-apikey-error');
+			this._setStatus('zotpdf-prefs-apikey-error');
 			return;
 		}
 
@@ -74,10 +84,10 @@ var ZoteroOpenAlexPrefs = {
 		}
 
 		if (remaining === null || remaining === undefined || remaining === '') {
-			this._setStatus('openalex-pdf-prefs-apikey-valid-nocredits');
+			this._setStatus('zotpdf-prefs-apikey-valid-nocredits');
 		}
 		else {
-			this._setStatus('openalex-pdf-prefs-apikey-valid', {
+			this._setStatus('zotpdf-prefs-apikey-valid', {
 				remaining: Number(remaining).toLocaleString()
 			});
 		}
@@ -87,4 +97,4 @@ var ZoteroOpenAlexPrefs = {
 // Pane scripts are loaded into a sandbox whose prototype is the preferences window, so
 // a bare `var` here is invisible to the inline oncommand handlers in the XHTML -- those
 // are compiled against the window itself. Publish the object explicitly.
-window.ZoteroOpenAlexPrefs = ZoteroOpenAlexPrefs;
+window.ZotPDFPrefs = ZotPDFPrefs;

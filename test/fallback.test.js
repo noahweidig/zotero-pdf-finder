@@ -49,3 +49,47 @@ test("openAlexFallback is null when the OpenAlex module is absent", () => {
 	const { fv } = load();
 	assert.equal(fv.openAlexFallback({}), null);
 });
+
+test("OpenAlex-hosted full text is used when links fail", async () => {
+	const fv = fvWith(async () => null);
+	const r = await fv.resolveOA("10.1/x", null, null, "e@x.org", async () => ({
+		locations: [{ url: "https://oa/dead.pdf" }],
+		hosted: async () => ({ bytes: pdfBytes(), url: "https://content.openalex.org/works/W1.pdf" }),
+	}));
+	assert.equal(r.status, "found");
+	assert.equal(r.source, "https://content.openalex.org/works/W1.pdf");
+	assert.ok(r.bytes);
+});
+
+test("preferHosted tries the hosted copy before the links", async () => {
+	const order = [];
+	const fv = fvWith(async (u) => { order.push("link"); return pdfBytes(); });
+	const r = await fv.resolveOA("10.1/x", null, null, "e@x.org", async () => ({
+		locations: [{ url: "https://oa/a.pdf" }],
+		preferHosted: true,
+		hosted: async () => { order.push("hosted"); return { bytes: pdfBytes(), url: "u" }; },
+	}));
+	assert.equal(r.status, "found");
+	assert.deepEqual(order, ["hosted"]);
+});
+
+test("publisher-page step reports the item as attached by Zotero", async () => {
+	const fv = fvWith(async () => null);
+	const r = await fv.resolveOA("10.1/x", null, null, "e@x.org", async () => ({
+		locations: [],
+		publisher: async () => "https://publisher.example/article",
+	}));
+	assert.equal(r.status, "found");
+	assert.equal(r.attached, true);
+	assert.equal(r.source, "https://publisher.example/article");
+});
+
+test("a failing OpenAlex step is recorded and the verdict is check", async () => {
+	const fv = fvWith(async () => null);
+	const r = await fv.resolveOA("10.1/x", null, null, "e@x.org", async () => ({
+		locations: [],
+		hosted: async () => { throw new Error("rate limit"); },
+	}));
+	assert.equal(r.status, "check");
+	assert.match(r.reason, /OpenAlex: rate limit/);
+});

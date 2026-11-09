@@ -2,48 +2,33 @@
 "use strict";
 
 /*
- * Bundled in ZotPDF from https://github.com/heidihelena/fullvahti
- * (Apache-2.0, see LICENSE-FULLVAHTI and NOTICE).
- * Modified for ZotPDF: resolveOA()/run() accept an OpenAlex fallback
- * (open-access locations only, plus title search for items without identifiers).
+ * ZotPDF engine: PDF lookup pipeline, retraction check, citation-metadata check
+ * and the local write-back endpoint.
+ *
+ * Portions derived from an Apache-2.0-licensed work; see LICENSE-APACHE and NOTICE.
+ * Modified for ZotPDF: additional PDF sources, one progress UI, tags only (no
+ * report note) when finding PDFs, preferences under extensions.zotero.zotpdf.*.
+ *
+ * PDF lookup order per item: Unpaywall, PubMed Central, then the extra sources in
+ * src/sources.js, then OpenAlex. Each item is tagged fulltext:pdf-found,
+ * fulltext:pdf-missing or fulltext:check-needed.
+ *
+ * Write-back: a token-guarded endpoint on Zotero's local server so external tools
+ * can add or remove tags. Default off, previewable (dryRun), restricted to an
+ * allowlisted tag namespace, audited, and reversible via /zotpdf/undo.
+ *
+ * Where data goes: Zotero metadata is read locally. Each item's DOI/PMID/title,
+ * plus the contact email where an API asks for it, is sent to the lookup services
+ * named in Settings. Resolved PDF URLs are fetched from their host sites without
+ * the email.
  */
 
-/**
- * FullVahti — open-access full texts for Zotero, the Vahtian way.
- *
- * Fetch: for selected items (or every item carrying the trigger tag), resolve an
- * open-access PDF by DOI (Unpaywall) or PMID (PubMed Central / Europe PMC),
- * attach it to the item, and record the outcome as a status tag:
- *   fulltext:pdf-found / fulltext:pdf-missing / fulltext:check-needed
- * One standalone report note per run (optional) lists what was NOT found and why —
- * that list is what feeds interlibrary loan requests and PRISMA flow diagrams.
- * No per-item notes: the attached PDF is its own record.
- *
- * Write: a token-guarded endpoint on Zotero's local server so CiteVahti's gated
- * writeback can add/remove tags. Default OFF. No silent writes — every write is
- * previewable (dryRun), restricted to an allowlisted tag namespace, recorded to a
- * local audit log, and reversible via /fullvahti/undo. FullVahti never verifies
- * claims, rates anything, or sees manuscript text: it only receives an item key
- * and allowlisted tags, after CiteVahti has obtained the user's confirmation.
- *
- * Stance (shared with the Vahtian spine): open access only — paywalled items are
- * reported as missing, never bypassed. PMC downloads are restricted to the PMC
- * Open Access Subset via the OA Web Service; PMC pages are never scraped.
- *
- * Where data goes (and nowhere else): Zotero metadata is read locally. Each
- * item's DOI/PMID — plus the contact email where an API asks for it — is sent
- * to the OA-resolution services (Unpaywall, NCBI, Europe PMC) and, for the
- * retraction check, to NCBI and Crossref (which carries the Retraction Watch
- * database). Resolved PDF URLs are fetched from their host sites, without the email.
- */
-
-var FullVahti = {
+ZotPDF.Engine = {
 	id: null,
 	version: null,
 	rootURI: null,
 	initialized: false,
 	running: false,
-	addedElementIDs: [],
 
 	STATUS_TAGS: ["fulltext:pdf-found", "fulltext:pdf-missing", "fulltext:check-needed"],
 	STATUS_BY_KEY: {
@@ -52,7 +37,7 @@ var FullVahti = {
 		check: "fulltext:check-needed",
 	},
 	// Retraction scan tags. A retracted citation is exactly what screening must
-	// catch; FullVahti reads the fact from PubMed and never judges it itself.
+	// catch; ZotPDF reads the fact from PubMed and never judges it itself.
 	RETRACTION_TAGS: ["retraction:retracted", "retraction:none", "retraction:check-needed"],
 	RETRACTION_BY_KEY: {
 		retracted: "retraction:retracted",
@@ -60,7 +45,7 @@ var FullVahti = {
 		check: "retraction:check-needed",
 	},
 	// Citation health check: compare a record against Crossref and flag what's
-	// missing or disagrees. Read-only — FullVahti never changes a field; it surfaces
+	// missing or disagrees. Read-only — ZotPDF never changes a field; it surfaces
 	// the discrepancy so the human decides. A mismatch is never auto-resolved.
 	CITATION_TAGS: ["citation:ok", "citation:incomplete", "citation:mismatch", "citation:check-needed"],
 	CITATION_BY_KEY: {
@@ -69,10 +54,10 @@ var FullVahti = {
 		mismatch: "citation:mismatch",
 		check: "citation:check-needed",
 	},
-	// Writeback (CiteVahti) may only touch tags in the Vahtian namespace. Tags
+	// Write-back may only touch tags in these namespaces. Tags
 	// outside these prefixes are refused, so a leaked token can't write arbitrary
 	// tags into someone's library.
-	ALLOWED_TAG_PREFIXES: ["cite:", "fulltext:", "retraction:", "citation:", "GRADE:", "RoB2:", "ROBINS-I:", "Quality:"],
+	ALLOWED_TAG_PREFIXES: ["zotpdf:", "fulltext:", "retraction:", "citation:", "GRADE:", "RoB2:", "ROBINS-I:", "Quality:"],
 	// Every applied writeback is recorded here (a JSON array, newest last) so each
 	// change is auditable and undoable. Bounded so the log can't grow without limit.
 	AUDIT_PREF: "auditLog",
@@ -95,18 +80,18 @@ var FullVahti = {
 	},
 
 	log(msg) {
-		Zotero.debug("FullVahti: " + msg);
+		Zotero.debug("ZotPDF: " + msg);
 	},
 
 	// -----------------------------------------------------------------
 	// Preferences
 	// -----------------------------------------------------------------
 	getPref(key) {
-		return Zotero.Prefs.get("extensions.fullvahti." + key, true);
+		return Zotero.Prefs.get("extensions.zotero.zotpdf." + key, true);
 	},
 
 	setPref(key, value) {
-		Zotero.Prefs.set("extensions.fullvahti." + key, value, true);
+		Zotero.Prefs.set("extensions.zotero.zotpdf." + key, value, true);
 	},
 
 	// -----------------------------------------------------------------
@@ -121,7 +106,7 @@ var FullVahti = {
 		try { doc = root && root.ownerDocument; } catch (e) { doc = null; }
 		if (!doc) { this.log("prefsInit: no live document"); return; }
 		try {
-			let box = doc.getElementById("fullvahti-token-display");
+			let box = doc.getElementById("zotpdf-token-display");
 			if (box) box.value = this.getPref("writebackToken") || "(none yet — click “Generate new token”)";
 		}
 		catch (e) { this.log("prefsInit token: " + e); }
@@ -140,13 +125,13 @@ var FullVahti = {
 			}
 			catch (e) { self.log("prefsInit bind " + id + ": " + e); }
 		};
-		bind("fullvahti-token-generate", d => self.prefGenerateToken(d));
-		bind("fullvahti-token-copy", d => self.prefCopyToken(d));
-		bind("fullvahti-test-connection", () => self.prefTestConnection());
-		bind("fullvahti-view-audit", () => self.showAuditLog(self.prefWin()));
-		bind("fullvahti-openurl-test", () => self.prefTestResolver());
-		bind("fullvahti-retract-run", () => self.runRetractionForTag(self.prefWin()));
-		bind("fullvahti-citation-run", () => self.runCitationCheckForTag(self.prefWin()));
+		bind("zotpdf-token-generate", d => self.prefGenerateToken(d));
+		bind("zotpdf-token-copy", d => self.prefCopyToken(d));
+		bind("zotpdf-test-connection", () => self.prefTestConnection());
+		bind("zotpdf-view-audit", () => self.showAuditLog(self.prefWin()));
+		bind("zotpdf-find-run", () => self.runForTag(self.prefWin()));
+		bind("zotpdf-retract-run", () => self.runRetractionForTag(self.prefWin()));
+		bind("zotpdf-citation-run", () => self.runCitationCheckForTag(self.prefWin()));
 	},
 
 	// The main Zotero window — a live, never-dead handle for dialogs and progress.
@@ -160,7 +145,7 @@ var FullVahti = {
 		let w = this.prefWin();
 		try { if (w && typeof w.alert === "function") { w.alert(msg); return; } }
 		catch (e) { /* try next */ }
-		try { Services.prompt.alert(w || null, "FullVahti", msg); return; }
+		try { Services.prompt.alert(w || null, "ZotPDF", msg); return; }
 		catch (e) { /* fall through */ }
 		this.log(msg);
 	},
@@ -178,7 +163,7 @@ var FullVahti = {
 			token = Array.from(bytes, b => cs[b % cs.length]).join("");
 		}
 		this.setPref("writebackToken", token);
-		try { let box = doc.getElementById("fullvahti-token-display"); if (box) box.value = token; }
+		try { let box = doc.getElementById("zotpdf-token-display"); if (box) box.value = token; }
 		catch (e) { /* the prefSay below still confirms it worked */ }
 		this.prefSay("A new write-back token was generated. Use “Copy” to copy it.");
 	},
@@ -197,175 +182,88 @@ var FullVahti = {
 	async prefTestConnection() {
 		try {
 			let xhr = await Zotero.HTTP.request("GET",
-				"http://127.0.0.1:23119/fullvahti/ping",
+				"http://127.0.0.1:23119/zotpdf/ping",
 				{ responseType: "json", timeout: 5000, successCodes: false });
 			let d = (xhr && xhr.response) || {};
 			let tokenSet = !!this.getPref("writebackToken");
 			this.prefSay(
-				"FullVahti’s local endpoint is reachable.\n\n"
+				"ZotPDF’s local endpoint is reachable.\n\n"
 				+ "Write-back enabled: " + (d.writeback ? "yes" : "no — tick the box above") + "\n"
 				+ "Token set: " + (tokenSet ? "yes" : "no — click “Generate new token”") + "\n\n"
 				+ (d.writeback && tokenSet
-					? "Ready: give the token to CiteVahti."
-					: "Finish the two steps above, then CiteVahti can connect."));
+					? "Ready: give the token to the tool."
+					: "Finish the two steps above, then the tool can connect."));
 		}
 		catch (e) {
 			this.log("prefTestConnection: " + e);
 			this.prefSay(
-				"Could not reach FullVahti’s local endpoint.\n\n"
+				"Could not reach ZotPDF’s local endpoint.\n\n"
 				+ "Check that Zotero’s local server is on (Settings → Advanced → "
 				+ "“Allow other applications on this computer to communicate with Zotero”), "
 				+ "then try again.\n\nDetail: " + e);
 		}
 	},
 
-	prefTestResolver() {
-		let base = (this.getPref("openURLResolver") || "").trim();
-		if (!base) { this.prefSay("Enter your library’s OpenURL resolver address first."); return; }
-		let url = this.buildOpenURL(base, { title: "An example article", journal: "Journal of Examples",
-			year: "2020", volume: "12", issue: "3", pages: "45-67", doi: "10.1038/nphys1170" });
-		try { Zotero.launchURL(url); }
-		catch (e) {
-			this.log("prefTestResolver: " + e);
-			this.prefSay("Couldn’t open the link. The resolver address may be malformed:\n\n" + url);
-		}
-	},
-
-	// -----------------------------------------------------------------
-	// Window wiring
-	// -----------------------------------------------------------------
-	addToWindow(window) {
-		let doc = window.document;
-
-		let itemMenu = doc.getElementById("zotero-itemmenu");
-		if (itemMenu && !doc.getElementById("fullvahti-itemmenu")) {
-			let mi = doc.createXULElement("menuitem");
-			mi.id = "fullvahti-itemmenu";
-			mi.setAttribute("label", "FullVahti: Find Open-Access PDFs");
-			mi.addEventListener("command", () => this.runForSelected(window));
-			itemMenu.appendChild(mi);
-			this.storeAddedElement(mi);
-		}
-
-		if (itemMenu && !doc.getElementById("fullvahti-itemmenu-retract")) {
-			let mi = doc.createXULElement("menuitem");
-			mi.id = "fullvahti-itemmenu-retract";
-			mi.setAttribute("label", "FullVahti: Check for Retractions");
-			mi.addEventListener("command", () => this.runRetractionForSelected(window));
-			itemMenu.appendChild(mi);
-			this.storeAddedElement(mi);
-		}
-
-		if (itemMenu && !doc.getElementById("fullvahti-itemmenu-citation")) {
-			let mi = doc.createXULElement("menuitem");
-			mi.id = "fullvahti-itemmenu-citation";
-			mi.setAttribute("label", "FullVahti: Check Citation Metadata");
-			mi.addEventListener("command", () => this.runCitationCheckForSelected(window));
-			itemMenu.appendChild(mi);
-			this.storeAddedElement(mi);
-		}
-
-		let toolsMenu = doc.getElementById("menu_ToolsPopup");
-		if (toolsMenu && !doc.getElementById("fullvahti-toolsmenu")) {
-			let mi = doc.createXULElement("menuitem");
-			mi.id = "fullvahti-toolsmenu";
-			let tag = this.getPref("triggerTag") || "cite:closer-look";
-			mi.setAttribute("label", `FullVahti: Find OA PDFs for items tagged “${tag}”`);
-			mi.addEventListener("command", () => this.runForTag(window));
-			toolsMenu.appendChild(mi);
-			this.storeAddedElement(mi);
-		}
-
-		if (toolsMenu && !doc.getElementById("fullvahti-toolsmenu-retract")) {
-			let mi = doc.createXULElement("menuitem");
-			mi.id = "fullvahti-toolsmenu-retract";
-			let tag = this.getPref("triggerTag") || "cite:closer-look";
-			mi.setAttribute("label", `FullVahti: Check items tagged “${tag}” for retractions`);
-			mi.addEventListener("command", () => this.runRetractionForTag(window));
-			toolsMenu.appendChild(mi);
-			this.storeAddedElement(mi);
-		}
-
-		if (toolsMenu && !doc.getElementById("fullvahti-toolsmenu-citation")) {
-			let mi = doc.createXULElement("menuitem");
-			mi.id = "fullvahti-toolsmenu-citation";
-			let tag = this.getPref("triggerTag") || "cite:closer-look";
-			mi.setAttribute("label", `FullVahti: Check citation metadata for items tagged “${tag}”`);
-			mi.addEventListener("command", () => this.runCitationCheckForTag(window));
-			toolsMenu.appendChild(mi);
-			this.storeAddedElement(mi);
-		}
-
-		if (toolsMenu && !doc.getElementById("fullvahti-toolsmenu-manuscript")) {
-			let mi = doc.createXULElement("menuitem");
-			mi.id = "fullvahti-toolsmenu-manuscript";
-			mi.setAttribute("label", "FullVahti: Check manuscript citations (opens vahtian.com)");
-			mi.addEventListener("command", () => {
-				try { Zotero.launchURL("https://vahtian.com/zotero-citation-checker/"); }
-				catch (e) { this.log("manuscript checker link: " + e); }
-			});
-			toolsMenu.appendChild(mi);
-			this.storeAddedElement(mi);
-		}
-
-		// Lets the user see (and clear) CiteVahti's write-back history without
-		// touching the HTTP endpoint — the "audited" guarantee, made human-facing.
-		if (toolsMenu && !doc.getElementById("fullvahti-auditmenu")) {
-			let mi = doc.createXULElement("menuitem");
-			mi.id = "fullvahti-auditmenu";
-			mi.setAttribute("label", "FullVahti: Show CiteVahti write-back audit log");
-			mi.addEventListener("command", () => this.showAuditLog(window));
-			toolsMenu.appendChild(mi);
-			this.storeAddedElement(mi);
-		}
-	},
-
-	addToAllWindows() {
-		for (let win of Zotero.getMainWindows()) {
-			if (!win.ZoteroPane) continue;
-			this.addToWindow(win);
-		}
-	},
-
-	storeAddedElement(elem) {
-		if (!elem.id) throw new Error("Element must have an id");
-		try {
-			elem.classList.add("menuitem-iconic");
-			elem.style.listStyleImage = `url("${this.rootURI}icons/zotpdf-16.svg")`;
-		}
-		catch (e) { /* icon is cosmetic */ }
-		this.addedElementIDs.push(elem.id);
-	},
-
-	removeFromWindow(window) {
-		let doc = window.document;
-		for (let id of this.addedElementIDs) {
-			doc.getElementById(id)?.remove();
-		}
-	},
-
-	removeFromAllWindows() {
-		for (let win of Zotero.getMainWindows()) {
-			if (!win.ZoteroPane) continue;
-			this.removeFromWindow(win);
-		}
-	},
-
 	// -----------------------------------------------------------------
 	// Entry points
 	// -----------------------------------------------------------------
+	// One progress table for every run (PDFs, retractions, metadata). Uses
+	// ZotPDF's progress-queue dialog; falls back to Zotero's corner popup when
+	// that is not available (unit tests).
+	openProgress(kind, items) {
+		let UI = typeof ZotPDF !== "undefined" && ZotPDF.createProgress ? ZotPDF : null;
+		let good = { find: ["found"], retraction: ["none"], citation: ["ok"] }[kind];
+		let label = r => {
+			if (r.reason) return r.reason;
+			if (r.status === "found" && r.via) return "PDF attached (" + r.via + ")";
+			return { found: "PDF attached", missing: "No open-access copy", check: "Needs a look",
+				retracted: "⚠ Retracted", none: "No retraction recorded", ok: "Looks right",
+				incomplete: "Missing fields", mismatch: "Doesn’t match Crossref" }[r.status] || r.status;
+		};
+		if (UI) {
+			let p = UI.createProgress(kind);
+			for (let it of items) p.add(it);
+			return {
+				get cancelled() { return p.cancelled; },
+				begin(item, i, n) { p.processing(item, "Checking…"); p.setStatus(`${i + 1} of ${n}`); },
+				end(item, row) {
+					if (row && good.includes(row.status)) p.succeeded(item, label(row));
+					else p.failed(item, label(row || {}));
+				},
+				summary(text) { p.setStatus(text); },
+				close() {},
+			};
+		}
+		let headline = { find: "finding PDFs", retraction: "checking for retractions",
+			citation: "checking citation metadata" }[kind];
+		let pw = new Zotero.ProgressWindow({ closeOnClick: false });
+		pw.changeHeadline("ZotPDF — " + headline);
+		pw.show();
+		let ip = new pw.ItemProgress("", "Starting…");
+		return {
+			cancelled: false,
+			begin(item, i, n) {
+				ip.setText(`${i + 1}/${n}  ${(item.getField("title") || "").substring(0, 70)}`);
+				ip.setProgress(Math.round((i / n) * 100));
+			},
+			end() {},
+			summary(text) { ip.setProgress(100); ip.setText(text); },
+			close() { pw.startCloseTimer(8000); },
+		};
+	},
+
 	async runForSelected(window) {
 		let items = window.ZoteroPane.getSelectedItems()
 			.filter(it => it.isRegularItem() && it.isTopLevelItem());
 		if (!items.length) {
-			window.alert("FullVahti: select one or more regular items first (not attachments or notes).");
+			window.alert("ZotPDF: select one or more regular items first (not attachments or notes).");
 			return;
 		}
 		await this.run(items, window);
 	},
 
 	async runForTag(window) {
-		let tag = this.getPref("triggerTag") || "cite:closer-look";
+		let tag = this.getPref("triggerTag") || "zotpdf";
 		let s = new Zotero.Search();
 		s.libraryID = Zotero.Libraries.userLibraryID;
 		s.addCondition("tag", "is", tag);
@@ -374,7 +272,7 @@ var FullVahti = {
 			.filter(it => it.isRegularItem() && it.isTopLevelItem());
 		if (!items.length) {
 			window.alert(
-				`FullVahti: no items carry the tag “${tag}”.\n\n` +
+				`ZotPDF: no items carry the tag “${tag}”.\n\n` +
 				"Tag the references you want full texts for with that tag, " +
 				"or simply select items and use the right-click menu instead."
 			);
@@ -388,7 +286,7 @@ var FullVahti = {
 	// -----------------------------------------------------------------
 	async run(items, window) {
 		if (this.running) {
-			window.alert("FullVahti is already running — let the current batch finish first.");
+			window.alert("ZotPDF is already running — let the current batch finish first.");
 			return;
 		}
 
@@ -399,18 +297,16 @@ var FullVahti = {
 			let mins = Math.ceil(items.length * ((parseInt(this.getPref("delayMs")) || 400) + 2500) / 60000);
 			let ok = Services.prompt.confirm(
 				window,
-				"FullVahti",
-				`${items.length} items — FullVahti fetches politely (one at a time), ` +
+				"ZotPDF",
+				`${items.length} items — ZotPDF fetches politely (one at a time), ` +
 				`so this will take roughly ${mins} min. You can keep using Zotero meanwhile. Continue?`
 			);
 			if (!ok) return;
 		}
 
 		this.running = true;
-		let pw = new Zotero.ProgressWindow({ closeOnClick: false });
-		pw.changeHeadline("FullVahti — finding open-access PDFs");
-		pw.show();
-		let progress = new pw.ItemProgress("", "Starting…");
+		try { ZotPDF.API.resetKeyState(); } catch (e) { /* OpenAlex module optional */ }
+		let progress = this.openProgress("find", items);
 
 		let delayMs = parseInt(this.getPref("delayMs")) || 400;
 		let rows = [];
@@ -420,9 +316,9 @@ var FullVahti = {
 		try {
 			for (let i = 0; i < items.length; i++) {
 				let item = items[i];
+				if (progress.cancelled) break;
 				let title = (item.getField("title") || "(untitled)").substring(0, 70);
-				progress.setText(`${i + 1}/${items.length}  ${title}`);
-				progress.setProgress(Math.round((i / items.length) * 100));
+				progress.begin(item, i, items.length);
 
 				let doi = this.extractDOI(item);
 				let pmid = this.extractPMID(item);
@@ -437,6 +333,7 @@ var FullVahti = {
 					rows.push({ key: item.key, title, doi: doi || "", pmid: pmid || "",
 						status, reason: "duplicate of an item already processed this run",
 						source: "", license: "", oaStatus: "", duplicate: true });
+					progress.end(item, rows[rows.length - 1]);
 					await Zotero.Promise.delay(delayMs);
 					continue;
 				}
@@ -444,7 +341,7 @@ var FullVahti = {
 
 				let row = Object.assign({ key: item.key, title, doi: doi || "", pmid: pmid || "",
 					status: "", reason: "", source: "", license: "", oaStatus: "" },
-					this.citationFields(item));
+					{});
 				try {
 					if (this.hasPDF(item)) {
 						row.status = "found";
@@ -452,7 +349,10 @@ var FullVahti = {
 					}
 					else {
 						let noIDs = !doi && !pmid && !pmcid;
-						let res = await this.resolveOA(doi, pmid, pmcid, email, this.openAlexFallback(item));
+						let landings = [];
+						let sources = this.extraSources(item, { doi, pmid, pmcid, email, landings });
+						let res = await this.resolveOA(doi, pmid, pmcid, email,
+							this.openAlexFallback(item, landings), sources, landings);
 						if (noIDs && res.status !== "found") {
 							res = { status: "check", reason: "no DOI, PMID, or PMCID on the item"
 								+ (res.reason ? "; " + res.reason : "") };
@@ -462,7 +362,8 @@ var FullVahti = {
 						row.source = res.source || "";
 						row.license = res.license || "";
 						row.oaStatus = res.oaStatus || "";
-						if (res.status === "found") {
+						row.via = res.via || "";
+						if (res.status === "found" && !res.attached) {
 							await this.attachPDF(item, res.bytes, res.source);
 						}
 					}
@@ -477,21 +378,18 @@ var FullVahti = {
 				seen.set(dedup, row.status); // later duplicates mirror this outcome
 				await this.setStatusTag(item, this.STATUS_BY_KEY[row.status]);
 				rows.push(row);
+				progress.end(item, rows[rows.length - 1]);
 				await Zotero.Promise.delay(delayMs);
 			}
 
-			progress.setProgress(100);
-			progress.setText(
+			progress.summary(
 				`Done: ${counts.found} found · ${counts.missing} no OA copy · ${counts.check} need a look`
 			);
 
-			if (this.getPref("reportNote") && rows.length) {
-				await this.writeReportNote(rows, counts);
-			}
 		}
 		finally {
 			this.running = false;
-			pw.startCloseTimer(8000);
+			progress.close();
 		}
 	},
 
@@ -504,8 +402,8 @@ var FullVahti = {
 		let value = { value: guess.includes("@") ? guess : "" };
 		let ok = Services.prompt.prompt(
 			window,
-			"FullVahti — one-time setup",
-			"FullVahti looks up open-access copies via Unpaywall and PubMed Central.\n" +
+			"ZotPDF — one-time setup",
+			"ZotPDF looks up open-access copies via Unpaywall, PubMed Central and OpenAlex.\n" +
 			"These free services ask politely for a contact email (it is sent only to them,\n" +
 			"never to us). Your email:",
 			value, null, {}
@@ -517,20 +415,20 @@ var FullVahti = {
 
 	// -----------------------------------------------------------------
 	// Retraction scan — flag references PubMed records as retracted.
-	// FullVahti reports the fact; it never decides retraction itself.
+	// ZotPDF reports the fact; it never decides retraction itself.
 	// -----------------------------------------------------------------
 	async runRetractionForSelected(window) {
 		let items = window.ZoteroPane.getSelectedItems()
 			.filter(it => it.isRegularItem() && it.isTopLevelItem());
 		if (!items.length) {
-			window.alert("FullVahti: select one or more regular items first (not attachments or notes).");
+			window.alert("ZotPDF: select one or more regular items first (not attachments or notes).");
 			return;
 		}
 		await this.runRetraction(items, window);
 	},
 
 	async runRetractionForTag(window) {
-		let tag = this.getPref("triggerTag") || "cite:closer-look";
+		let tag = this.getPref("triggerTag") || "zotpdf";
 		let s = new Zotero.Search();
 		s.libraryID = Zotero.Libraries.userLibraryID;
 		s.addCondition("tag", "is", tag);
@@ -538,7 +436,7 @@ var FullVahti = {
 		let items = (await Zotero.Items.getAsync(ids))
 			.filter(it => it.isRegularItem() && it.isTopLevelItem());
 		if (!items.length) {
-			window.alert(`FullVahti: no items carry the tag “${tag}”.`);
+			window.alert(`ZotPDF: no items carry the tag “${tag}”.`);
 			return;
 		}
 		await this.runRetraction(items, window);
@@ -546,17 +444,14 @@ var FullVahti = {
 
 	async runRetraction(items, window) {
 		if (this.running) {
-			window.alert("FullVahti is already running — let the current batch finish first.");
+			window.alert("ZotPDF is already running — let the current batch finish first.");
 			return;
 		}
 		let email = await this.ensureEmail(window);
 		if (!email) return;
 
 		this.running = true;
-		let pw = new Zotero.ProgressWindow({ closeOnClick: false });
-		pw.changeHeadline("FullVahti — checking for retractions");
-		pw.show();
-		let progress = new pw.ItemProgress("", "Starting…");
+		let progress = this.openProgress("retraction", items);
 
 		let delayMs = parseInt(this.getPref("delayMs")) || 400;
 		let rows = [];
@@ -566,9 +461,9 @@ var FullVahti = {
 		try {
 			for (let i = 0; i < items.length; i++) {
 				let item = items[i];
+				if (progress.cancelled) break;
 				let title = (item.getField("title") || "(untitled)").substring(0, 70);
-				progress.setText(`${i + 1}/${items.length}  ${title}`);
-				progress.setProgress(Math.round((i / items.length) * 100));
+				progress.begin(item, i, items.length);
 
 				let doi = this.extractDOI(item);
 				let pmid = this.extractPMID(item);
@@ -579,6 +474,7 @@ var FullVahti = {
 					rows.push({ key: item.key, title, doi: doi || "", pmid: pmid || "",
 						status, reason: "duplicate of an item already checked this run",
 						source: "", duplicate: true });
+					progress.end(item, rows[rows.length - 1]);
 					await Zotero.Promise.delay(delayMs);
 					continue;
 				}
@@ -602,15 +498,15 @@ var FullVahti = {
 				seen.set(dedup, row.status);
 				await this.setRetractionTag(item, this.RETRACTION_BY_KEY[row.status]);
 				rows.push(row);
+				progress.end(item, rows[rows.length - 1]);
 				await Zotero.Promise.delay(delayMs);
 			}
 
-			progress.setProgress(100);
-			progress.setText(
+			progress.summary(
 				`Done: ${counts.retracted} retracted · ${counts.none} clear · ${counts.check} couldn’t check`
 			);
 			if (counts.retracted > 0) {
-				progress.setText(`⚠ ${counts.retracted} RETRACTED · ${counts.none} clear · ${counts.check} couldn’t check`);
+				progress.summary(`⚠ ${counts.retracted} RETRACTED · ${counts.none} clear · ${counts.check} couldn’t check`);
 			}
 
 			if (this.getPref("reportNote") && rows.length) {
@@ -619,7 +515,7 @@ var FullVahti = {
 		}
 		finally {
 			this.running = false;
-			pw.startCloseTimer(8000);
+			progress.close();
 		}
 	},
 
@@ -736,7 +632,7 @@ var FullVahti = {
 			if (!pid && doi) {
 				let xhr = await this.fetchJSON(
 					"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term="
-					+ encodeURIComponent(doi) + "%5BAID%5D&retmode=json&tool=fullvahti&email="
+					+ encodeURIComponent(doi) + "%5BAID%5D&retmode=json&tool=zotpdf&email="
 					+ encodeURIComponent(email));
 				if (xhr.status === 200 && xhr.response) pid = this.pmidFromESearch(xhr.response);
 			}
@@ -747,7 +643,7 @@ var FullVahti = {
 			}
 			let xhr = await this.fetchJSON(
 				"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id="
-				+ encodeURIComponent(pid) + "&retmode=json&tool=fullvahti&email="
+				+ encodeURIComponent(pid) + "&retmode=json&tool=zotpdf&email="
 				+ encodeURIComponent(email));
 			if (xhr.status !== 200 || !xhr.response) {
 				return { status: "check", reason: "PubMed lookup error (HTTP " + xhr.status + ")" };
@@ -781,11 +677,11 @@ var FullVahti = {
 		let retracted = rows.filter(r => r.status === "retracted" && !r.duplicate);
 		let unchecked = rows.filter(r => r.status === "check" && !r.duplicate);
 
-		let html = `<h1>FullVahti retraction check — ${esc(when)}</h1>`
+		let html = `<h1>ZotPDF retraction check — ${esc(when)}</h1>`
 			+ `<p><strong>${counts.retracted}</strong> retracted · `
 			+ `<strong>${counts.none}</strong> clear · `
 			+ `<strong>${counts.check}</strong> couldn’t be checked.</p>`
-			+ `<p>Retraction status is read from PubMed; FullVahti does not judge it. `
+			+ `<p>Retraction status is read from PubMed; ZotPDF does not judge it. `
 			+ `Items are tagged retraction:retracted / none / check-needed.</p>`;
 
 		if (retracted.length) {
@@ -817,13 +713,13 @@ var FullVahti = {
 		let note = new Zotero.Item("note");
 		note.libraryID = Zotero.Libraries.userLibraryID;
 		note.setNote(html);
-		note.addTag("fullvahti:report");
+		note.addTag("zotpdf:report");
 		await note.saveTx();
 	},
 
 	// -----------------------------------------------------------------
 	// Citation health check — compare a record against Crossref and flag what is
-	// missing or disagrees. READ-ONLY: FullVahti never changes a field, it reports
+	// missing or disagrees. READ-ONLY: ZotPDF never changes a field, it reports
 	// the discrepancy for a human to resolve. Mismatches are never auto-fixed —
 	// they often mean the wrong DOI is attached, which only a person should judge.
 	// -----------------------------------------------------------------
@@ -831,14 +727,14 @@ var FullVahti = {
 		let items = window.ZoteroPane.getSelectedItems()
 			.filter(it => it.isRegularItem() && it.isTopLevelItem());
 		if (!items.length) {
-			window.alert("FullVahti: select one or more regular items first (not attachments or notes).");
+			window.alert("ZotPDF: select one or more regular items first (not attachments or notes).");
 			return;
 		}
 		await this.runCitationCheck(items, window);
 	},
 
 	async runCitationCheckForTag(window) {
-		let tag = this.getPref("triggerTag") || "cite:closer-look";
+		let tag = this.getPref("triggerTag") || "zotpdf";
 		let s = new Zotero.Search();
 		s.libraryID = Zotero.Libraries.userLibraryID;
 		s.addCondition("tag", "is", tag);
@@ -846,7 +742,7 @@ var FullVahti = {
 		let items = (await Zotero.Items.getAsync(ids))
 			.filter(it => it.isRegularItem() && it.isTopLevelItem());
 		if (!items.length) {
-			window.alert(`FullVahti: no items carry the tag “${tag}”.`);
+			window.alert(`ZotPDF: no items carry the tag “${tag}”.`);
 			return;
 		}
 		await this.runCitationCheck(items, window);
@@ -854,17 +750,14 @@ var FullVahti = {
 
 	async runCitationCheck(items, window) {
 		if (this.running) {
-			window.alert("FullVahti is already running — let the current batch finish first.");
+			window.alert("ZotPDF is already running — let the current batch finish first.");
 			return;
 		}
 		let email = await this.ensureEmail(window);
 		if (!email) return;
 
 		this.running = true;
-		let pw = new Zotero.ProgressWindow({ closeOnClick: false });
-		pw.changeHeadline("FullVahti — checking citation metadata");
-		pw.show();
-		let progress = new pw.ItemProgress("", "Starting…");
+		let progress = this.openProgress("citation", items);
 
 		let delayMs = parseInt(this.getPref("delayMs")) || 400;
 		let rows = [];
@@ -873,9 +766,9 @@ var FullVahti = {
 		try {
 			for (let i = 0; i < items.length; i++) {
 				let item = items[i];
+				if (progress.cancelled) break;
 				let title = (item.getField("title") || "(untitled)").substring(0, 70);
-				progress.setText(`${i + 1}/${items.length}  ${title}`);
-				progress.setProgress(Math.round((i / items.length) * 100));
+				progress.begin(item, i, items.length);
 
 				let row = { key: item.key, title, status: "", reason: "", missing: [], mismatches: [] };
 				try {
@@ -894,11 +787,11 @@ var FullVahti = {
 				counts[row.status]++;
 				await this.setCitationTag(item, this.CITATION_BY_KEY[row.status]);
 				rows.push(row);
+				progress.end(item, rows[rows.length - 1]);
 				await Zotero.Promise.delay(delayMs);
 			}
 
-			progress.setProgress(100);
-			progress.setText(
+			progress.summary(
 				`Done: ${counts.ok} ok · ${counts.incomplete} incomplete · ${counts.mismatch} mismatch · ${counts.check} couldn’t check`
 			);
 
@@ -908,7 +801,7 @@ var FullVahti = {
 		}
 		finally {
 			this.running = false;
-			pw.startCloseTimer(8000);
+			progress.close();
 		}
 	},
 
@@ -1013,12 +906,12 @@ var FullVahti = {
 		let incomplete = rows.filter(r => r.status === "incomplete");
 		let unchecked = rows.filter(r => r.status === "check");
 
-		let html = `<h1>FullVahti citation check — ${esc(when)}</h1>`
+		let html = `<h1>ZotPDF citation check — ${esc(when)}</h1>`
 			+ `<p><strong>${counts.ok}</strong> ok · `
 			+ `<strong>${counts.incomplete}</strong> incomplete · `
 			+ `<strong>${counts.mismatch}</strong> mismatched · `
 			+ `<strong>${counts.check}</strong> couldn’t be checked.</p>`
-			+ `<p>Fields are compared against Crossref. FullVahti changes nothing — `
+			+ `<p>Fields are compared against Crossref. ZotPDF changes nothing — `
 			+ `it lists discrepancies for you to resolve. A mismatch may mean the wrong `
 			+ `DOI is attached, so check before editing. Items are tagged `
 			+ `citation:ok / incomplete / mismatch / check-needed.</p>`;
@@ -1055,12 +948,12 @@ var FullVahti = {
 		let note = new Zotero.Item("note");
 		note.libraryID = Zotero.Libraries.userLibraryID;
 		note.setNote(html);
-		note.addTag("fullvahti:report");
+		note.addTag("zotpdf:report");
 		await note.saveTx();
 	},
 
 	// -----------------------------------------------------------------
-	// Identifier extraction (ported from vahtian_fulltext.py)
+	// Identifier extraction
 	// -----------------------------------------------------------------
 	normalizeDOI(doi) {
 		doi = (doi || "").trim()
@@ -1128,16 +1021,18 @@ var FullVahti = {
 	},
 
 	// Paced GET that resolves on any status (we inspect it ourselves).
-	async fetch(url, responseType) {
+	async fetch(url, responseType, headers) {
 		await this.politePause();
-		return Zotero.HTTP.request("GET", url, {
+		let options = {
 			responseType,
 			timeout: this.HTTP_TIMEOUT,
 			successCodes: false,
-		});
+		};
+		if (headers) options.headers = headers;
+		return Zotero.HTTP.request("GET", url, options);
 	},
 
-	fetchJSON(url) { return this.fetch(url, "json"); },
+	fetchJSON(url, headers) { return this.fetch(url, "json", headers); },
 	fetchText(url) { return this.fetch(url, "text"); },
 
 	// Pure: judge whether a downloaded byte buffer is a real OA PDF rather than an
@@ -1198,54 +1093,70 @@ var FullVahti = {
 		return bytes;
 	},
 
-	/**
-	 * Query the PMC OA Web Service — the approved interface to the PMC Open
-	 * Access Subset. Being in PMC is NOT a download permission; only OA-subset
-	 * records may be fetched automatically, and this service is how you ask.
-	 * Returns { isOA, pdfURL?, license?, error? }.
-	 */
-	// Read attribute `name` from a single XML tag string, tolerating either
-	// quote style and surrounding whitespace — NCBI's serialization varies.
-	xmlAttr(tag, name) {
-		let m = tag.match(new RegExp(name + "\\s*=\\s*\"([^\"]*)\"", "i"))
-			|| tag.match(new RegExp(name + "\\s*=\\s*'([^']*)'", "i"));
-		return m ? m[1] : null;
+	waybackEnabled() {
+		let v = this.getPref("source.wayback");
+		return v === undefined || v === null ? true : !!v;
 	},
 
-	async pmcOALookup(pmcid) {
+	// Download a PDF from a link some source vouches for as free to read. If the
+	// link is dead, retry the Internet Archive's copy of that same URL.
+	async downloadOA(url) {
+		let bytes = await this.downloadPDF(url);
+		if (bytes || !this.waybackEnabled()) return bytes;
 		try {
-			let xhr = await this.fetchText(
-				"https://www.ncbi.nlm.nih.gov/pmc/utils/oa/oa.fcgi?id=" + encodeURIComponent(pmcid)
-			);
-			if (xhr.status !== 200) return { isOA: false, error: "HTTP " + xhr.status };
-			let xml = xhr.responseText || "";
-			let errTag = xml.match(/<error\b[^>]*>/i);
-			if (errTag) {
-				let code = this.xmlAttr(errTag[0], "code") || "unknown";
-				if (/idIsNotOpenAccess|idDoesNotExist/i.test(code)) return { isOA: false };
-				return { isOA: false, error: code };
+			let xhr = await this.fetchJSON("https://archive.org/wayback/available?url=" + encodeURIComponent(url));
+			let snap = xhr.status === 200 && xhr.response && xhr.response.archived_snapshots
+				&& xhr.response.archived_snapshots.closest;
+			if (snap && snap.available && snap.url) {
+				// "if_" asks for the raw file without the archive toolbar
+				let archived = snap.url.replace(/^http:/i, "https:").replace(/\/web\/(\d+)\//, "/web/$1if_/");
+				return await this.downloadPDF(archived);
 			}
-			let recTag = xml.match(/<record\b[^>]*>/i);
-			let license = (recTag && this.xmlAttr(recTag[0], "license")) || "";
-			let pdfURL = null;
-			let linkRe = /<link\b[^>]*>/gi;
-			let m;
-			while ((m = linkRe.exec(xml))) {
-				if ((this.xmlAttr(m[0], "format") || "").toLowerCase() === "pdf") {
-					let href = this.xmlAttr(m[0], "href");
-					if (href) {
-						// The OA service often hands out FTP links; NCBI serves the
-						// same tree over HTTPS, so upgrade the scheme for NCBI hosts.
-						pdfURL = href.replace(/^ftp:\/\/(ftp[\w.-]*\.ncbi\.nlm\.nih\.gov)\//i,
-							"https://$1/");
-						break;
-					}
-				}
-			}
-			return { isOA: true, pdfURL, license };
 		}
 		catch (e) {
-			this.log("pmc-oa error: " + e);
+			this.log("wayback error: " + e);
+		}
+		return null;
+	},
+
+	PMC_S3: "https://pmc-oa-opendata.s3.amazonaws.com/",
+
+	// Turn the dataset's s3:// URL (md5 query included) into a plain https URL
+	pmcS3ToHTTPS(url) {
+		let m = String(url || "").match(/^s3:\/\/pmc-oa-opendata\/([^?]+)/);
+		return m ? this.PMC_S3 + m[1] : null;
+	},
+
+	// The PMC Open Access Web Service was retired, so ask the PMC cloud dataset: list
+	// the article's versions, read each version's JSON metadata, and take the best
+	// one that has a PDF (published version before author manuscript).
+	// Returns { isOA, pdfURL?, license?, error? }.
+	async pmcOALookup(pmcid) {
+		try {
+			let id = String(pmcid).toUpperCase();
+			let list = await this.fetchText(
+				this.PMC_S3 + "?list-type=2&delimiter=%2F&prefix=" + encodeURIComponent(id + ".")
+			);
+			if (list.status !== 200) return { isOA: false, error: "HTTP " + list.status };
+			let versions = [...(list.responseText || "").matchAll(/<Prefix>(PMC\d+\.(\d+))\/<\/Prefix>/g)]
+				.map(m => ({ prefix: m[1], version: parseInt(m[2], 10) }))
+				.sort((a, b) => b.version - a.version);
+			if (!versions.length) return { isOA: false };
+
+			let records = [];
+			for (let v of versions.slice(0, 4)) {
+				let xhr = await this.fetchJSON(this.PMC_S3 + v.prefix + "/" + v.prefix + ".json");
+				if (xhr.status === 200 && xhr.response) records.push(xhr.response);
+			}
+			if (!records.length) return { isOA: false, error: "no metadata for " + id };
+			let withPDF = records.filter(r => this.pmcS3ToHTTPS(r.pdf_url))
+				.sort((a, b) => (a.is_manuscript ? 1 : 0) - (b.is_manuscript ? 1 : 0));
+			if (!withPDF.length) return { isOA: true, pdfURL: null, license: records[0].license_code || "" };
+			return { isOA: true, pdfURL: this.pmcS3ToHTTPS(withPDF[0].pdf_url),
+				license: withPDF[0].license_code || "" };
+		}
+		catch (e) {
+			this.log("pmc dataset error: " + e);
 			return { isOA: false, error: String(e) };
 		}
 	},
@@ -1255,16 +1166,17 @@ var FullVahti = {
 	 * Europe PMC for OA-confirmed records).
 	 * Returns { status: found|missing|check, bytes?, source?, license?, oaStatus?, reason? }.
 	 */
-	// OpenAlex as a last-resort source: only locations OpenAlex marks open access
-	// with a direct PDF link, so FullVahti's "never bypass a paywall" stance holds.
-	// Also resolves items that carry no DOI/PMID/PMCID via strict title matching.
+	// OpenAlex is the last source tried (after Unpaywall and PubMed Central). It
+	// supplies open-access PDF links, optional OpenAlex-hosted full text, and
+	// optional publisher pages via Zotero's own downloader. It also resolves items
+	// that have no DOI/PMID/PMCID through strict title matching.
 	// Returns a function for resolveOA to call only after the other sources fail.
-	openAlexFallback(item) {
-		let OA = typeof ZoteroOpenAlex !== "undefined" ? ZoteroOpenAlex : null;
-		if (!OA || !OA.Finder || !OA.Finder.findOAPDFLocations) return null;
+	openAlexFallback(item, landings) {
+		let OA = typeof ZotPDF !== "undefined" ? ZotPDF : null;
+		if (!OA || !OA.Finder || !OA.Finder.fallbackFor) return null;
 		return async () => {
 			try {
-				return await OA.Finder.findOAPDFLocations(item);
+				return await OA.Finder.fallbackFor(item, landings);
 			}
 			catch (e) {
 				this.log("openalex fallback error: " + e);
@@ -1273,11 +1185,47 @@ var FullVahti = {
 		};
 	},
 
-	async resolveOA(doi, pmid, pmcid, email, fallback) {
+	// The extra free sources (src/sources.js) as ordered steps, sharing one context so
+	// a DOI learned from a title match feeds the later steps. [] when unavailable.
+	extraSources(item, ids) {
+		let S = typeof ZotPDF !== "undefined" ? ZotPDF.Sources : null;
+		if (!S || !S.build) return [];
+		let title = "";
+		try { title = item.getField("title") || ""; } catch (e) { /* ignore */ }
+		return S.build({
+			doi: ids.doi || null,
+			pmid: ids.pmid || null,
+			pmcid: ids.pmcid || null,
+			title,
+			year: this.extractYear(item),
+			arxiv: this.extractArxiv(item),
+			email: ids.email,
+			landings: ids.landings,
+			get: (url, headers) => this.fetchJSON(url, headers),
+		});
+	},
+
+	extractYear(item) {
+		let date = "";
+		try { date = item.getField("date") || ""; } catch (e) { /* ignore */ }
+		let m = date.match(/\b(1[5-9]\d\d|20\d\d)\b/);
+		return m ? parseInt(m[1], 10) : null;
+	},
+
+	extractArxiv(item) {
+		let extra = "", url = "";
+		try { extra = item.getField("extra") || ""; } catch (e) { /* ignore */ }
+		try { url = item.getField("url") || ""; } catch (e) { /* ignore */ }
+		let m = extra.match(/^\s*arxiv\s*:\s*(\S+)/im) || url.match(/arxiv\.org\/(?:abs|pdf)\/(\S+?)(?:v\d+)?(?:\.pdf)?$/i);
+		return m ? m[1].replace(/v\d+$/i, "") : null;
+	},
+
+	async resolveOA(doi, pmid, pmcid, email, fallback, sources, landings) {
 		let sawError = false;
 		let reason = "";
 		let oaStatus = "";
 		let join = (a, b) => (a ? a + "; " + b : b);
+		let tried = new Set(); // every PDF URL already attempted for this item
 
 		if (doi) {
 			try {
@@ -1306,11 +1254,19 @@ var FullVahti = {
 								candidates.push({ url: u, license: loc.license || "" });
 							}
 						}
+						if (landings) {
+							for (let loc of locs) {
+								if (loc && !loc.url_for_pdf && loc.url_for_landing_page) {
+									landings.push(loc.url_for_landing_page);
+								}
+							}
+						}
 						for (let c of candidates) {
-							let bytes = await this.downloadPDF(c.url);
+							tried.add(c.url);
+							let bytes = await this.downloadOA(c.url);
 							if (bytes) {
 								return { status: "found", bytes, source: c.url,
-									license: c.license, oaStatus };
+									license: c.license, oaStatus, via: "Unpaywall" };
 							}
 						}
 						if (candidates.length) {
@@ -1337,20 +1293,21 @@ var FullVahti = {
 			}
 		}
 
-		if (pmid && !pmcid) {
+		if ((pmid || doi) && !pmcid) {
+			let byDOI = !pmid;
 			try {
 				let xhr = await this.fetchJSON(
-					"https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/?ids=" + encodeURIComponent(pmid)
-					+ "&format=json&tool=fullvahti&email=" + encodeURIComponent(email)
+					"https://pmc.ncbi.nlm.nih.gov/tools/idconv/api/v1/articles/?ids=" + encodeURIComponent(pmid || doi)
+					+ "&format=json&tool=zotpdf&email=" + encodeURIComponent(email)
 				);
 				if (xhr.status === 200 && xhr.response && xhr.response.records) {
 					for (let rec of xhr.response.records) {
 						if (rec.pmcid) { pmcid = rec.pmcid; break; }
 					}
 					// Confirmed absence — distinct from a lookup that failed.
-					if (!pmcid) reason = join(reason, "PMID has no PubMed Central record");
+					if (!pmcid && !byDOI) reason = join(reason, "PMID has no PubMed Central record");
 				}
-				else {
+				else if (!byDOI) {
 					// Don't let a transient lookup failure masquerade as "no PMC
 					// record" — flag it for a manual look (check) instead of missing.
 					sawError = true;
@@ -1361,8 +1318,11 @@ var FullVahti = {
 			}
 			catch (e) {
 				this.log("idconv error: " + e);
-				sawError = true;
-				reason = join(reason, "PubMed Central ID lookup failed");
+				// A DOI-only lookup is a bonus; the other sources still run
+				if (!byDOI) {
+					sawError = true;
+					reason = join(reason, "PubMed Central ID lookup failed");
+				}
 			}
 		}
 
@@ -1370,40 +1330,100 @@ var FullVahti = {
 			let oa = await this.pmcOALookup(pmcid);
 			if (oa.error) {
 				sawError = true;
-				reason = join(reason, "PMC OA service problem (" + oa.error + ")");
+				reason = join(reason, "PMC dataset problem (" + oa.error + ")");
 			}
 			else if (!oa.isOA) {
 				reason = join(reason,
-					`in PMC (${pmcid}) but not in the open-access subset — request via your library`);
+					`in PMC (${pmcid}) but not in its open dataset — request via your library`);
 			}
-			else {
-				if (oa.pdfURL) {
-					let bytes = await this.downloadPDF(oa.pdfURL);
-					if (bytes) {
-						return { status: "found", bytes, source: oa.pdfURL,
-							license: oa.license || "", oaStatus };
-					}
-				}
-				// OA-subset membership is confirmed, so Europe PMC's PDF for the
-				// same record is fair game as a fallback route.
-				let epmc = `https://www.ebi.ac.uk/europepmc/webservices/rest/${pmcid}/fullTextPDF`;
-				let bytes = await this.downloadPDF(epmc);
+			else if (oa.pdfURL) {
+				let bytes = await this.downloadPDF(oa.pdfURL);
 				if (bytes) {
-					return { status: "found", bytes, source: epmc,
-						license: oa.license || "", oaStatus };
+					return { status: "found", bytes, source: oa.pdfURL,
+						license: oa.license || "", oaStatus, via: "PubMed Central" };
 				}
 				sawError = true;
-				reason = join(reason, `in the PMC OA subset (${pmcid}) but PDF download failed`);
+				reason = join(reason, `in the PMC dataset (${pmcid}) but PDF download failed`);
 			}
+			else {
+				reason = join(reason, `in the PMC dataset (${pmcid}) but without a PDF`);
+			}
+		}
+
+		// Extra free sources, in order; the first real PDF wins
+		let failedSources = [];
+		let listedBut = [];
+		for (let src of sources || []) {
+			try {
+				let out = await src.find();
+				let reliable = 0;
+				for (let loc of out.locations || []) {
+					if (tried.has(loc.url)) continue;
+					tried.add(loc.url);
+					let bytes = await this.downloadOA(loc.url);
+					if (bytes) {
+						return { status: "found", bytes, source: loc.url,
+							license: loc.license || "", oaStatus, via: src.label };
+					}
+					if (!loc.guess) reliable++;
+				}
+				if (reliable) listedBut.push(src.label);
+			}
+			catch (e) {
+				this.log("source " + src.id + " error: " + e);
+				failedSources.push(src.label);
+			}
+		}
+		if (listedBut.length) {
+			sawError = true;
+			reason = join(reason, `${listedBut.join(", ")} listed a PDF link but it didn't download`);
+		}
+		if (failedSources.length) {
+			reason = join(reason, `${failedSources.join(", ")} unavailable`);
+			// Every extra source failing points at a network problem, not a missing paper
+			if (sources && failedSources.length === sources.length) sawError = true;
 		}
 
 		if (fallback) {
 			let oa = await fallback();
-			for (let loc of oa.locations || []) {
-				let bytes = await this.downloadPDF(loc.url);
-				if (bytes) {
-					return { status: "found", bytes, source: loc.url,
-						license: loc.license || "", oaStatus };
+			let tryLinks = async () => {
+				for (let loc of oa.locations || []) {
+					if (tried.has(loc.url)) continue;
+					tried.add(loc.url);
+					let bytes = await this.downloadOA(loc.url);
+					if (bytes) {
+						return { status: "found", bytes, source: loc.url,
+							license: loc.license || "", oaStatus, via: "OpenAlex" };
+					}
+				}
+				return null;
+			};
+			let tryHosted = async () => {
+				if (!oa.hosted) return null;
+				let h = await oa.hosted();
+				return h && h.bytes
+					? { status: "found", bytes: h.bytes, source: h.url, license: "", oaStatus, via: "OpenAlex (hosted)" }
+					: null;
+			};
+			let tryPublisher = async () => {
+				if (!oa.publisher) return null;
+				let source = await oa.publisher();
+				return source
+					? { status: "found", attached: true, source, license: "", oaStatus, via: "Publisher page" }
+					: null;
+			};
+			let steps = oa.preferHosted
+				? [tryHosted, tryLinks, tryPublisher]
+				: [tryLinks, tryHosted, tryPublisher];
+			for (let step of steps) {
+				try {
+					let r = await step();
+					if (r) return r;
+				}
+				catch (e) {
+					this.log("openalex step error: " + e);
+					sawError = true;
+					reason = join(reason, "OpenAlex: " + (e.message || e));
 				}
 			}
 			if (oa.error) {
@@ -1420,7 +1440,7 @@ var FullVahti = {
 	},
 
 	async attachPDF(item, bytes, sourceURL) {
-		let fname = "fullvahti-" + item.key + ".pdf";
+		let fname = "zotpdf-" + item.key + ".pdf";
 		let path = PathUtils.join(Zotero.getTempDirectory().path, fname);
 		await IOUtils.write(path, bytes);
 		try {
@@ -1473,100 +1493,6 @@ var FullVahti = {
 			issn: g("ISSN"),
 			firstAuthor,
 		};
-	},
-
-	// Pure: build a standards-compliant OpenURL 1.0 (Z39.88) link to a library's
-	// resolver so a paywalled-but-licensed item is one human click away. FullVahti
-	// never fetches it — it only hands the citation to *your* library, which keeps
-	// the OA-only stance intact and stays clear of publishers' bulk-download terms.
-	// Returns "" when no resolver base is configured. Side-effect-free (testable).
-	buildOpenURL(base, m) {
-		base = (base || "").trim();
-		if (!base) return "";
-		m = m || {};
-		let parts = [];
-		let add = (k, v) => { if (v) parts.push(encodeURIComponent(k) + "=" + encodeURIComponent(v)); };
-		add("ctx_ver", "Z39.88-2004");
-		add("rft_val_fmt", "info:ofi/fmt:kev:mtx:journal");
-		add("rfr_id", "info:sid/fullvahti");
-		add("rft.genre", "article");
-		add("rft.atitle", m.title);
-		add("rft.jtitle", m.journal);
-		add("rft.issn", m.issn);
-		add("rft.date", m.year);
-		add("rft.volume", m.volume);
-		add("rft.issue", m.issue);
-		add("rft.pages", m.pages);
-		add("rft.aulast", m.firstAuthor);
-		add("rft_id", m.doi ? "info:doi/" + m.doi : "");
-		add("rft_id", m.pmid ? "info:pmid/" + m.pmid : "");
-		let sep = base.includes("?") ? "&" : "?";
-		return base + sep + parts.join("&");
-	},
-
-	// -----------------------------------------------------------------
-	// Run report: ONE standalone note per run (never per-item notes).
-	// The "not found + why" list feeds ILL requests and PRISMA counts.
-	// -----------------------------------------------------------------
-	async writeReportNote(rows, counts) {
-		let esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-		let when = new Date().toLocaleString();
-		// Duplicates were tagged to match their original; don't repeat them in the
-		// actionable lists below (they're the same paper, already counted once).
-		let problems = rows.filter(r => r.status !== "found" && !r.duplicate);
-		let dupes = rows.filter(r => r.duplicate);
-		let resolver = (this.getPref("openURLResolver") || "").trim();
-
-		let html = `<h1>FullVahti report — ${esc(when)}</h1>`
-			+ `<p><strong>${counts.found}</strong> PDF(s) attached · `
-			+ `<strong>${counts.missing}</strong> with no open-access copy · `
-			+ `<strong>${counts.check}</strong> needing a manual look.</p>`
-			+ `<p>Open access only — paywalled items are listed below for interlibrary loan, `
-			+ `not bypassed. Items are tagged fulltext:pdf-found / pdf-missing / check-needed.</p>`;
-		if (resolver) {
-			html += `<p>Each item below has a “Find in my library” link — that goes to your `
-				+ `library’s resolver so you can fetch a licensed copy yourself. FullVahti `
-				+ `does not download paywalled PDFs; the link just hands the citation to your library.</p>`;
-		}
-		if (dupes.length) {
-			html += `<p>${dupes.length} duplicate item(s) were tagged to match the original `
-				+ `and omitted from the lists below.</p>`;
-		}
-
-		if (problems.length) {
-			html += "<h2>Still to get (" + problems.length + ")</h2><ul>";
-			for (let r of problems) {
-				let id = r.doi
-					? `<a href="https://doi.org/${esc(r.doi)}">doi:${esc(r.doi)}</a>`
-					: (r.pmid ? `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(r.pmid)}/">PMID ${esc(r.pmid)}</a>` : "no identifier");
-				let lib = "";
-				if (resolver) {
-					let u = this.buildOpenURL(resolver, {
-						title: r.title, journal: r.journal, year: r.year, volume: r.volume,
-						issue: r.issue, pages: r.pages, issn: r.issn, firstAuthor: r.firstAuthor,
-						doi: r.doi, pmid: r.pmid,
-					});
-					if (u) lib = ` — <a href="${esc(u)}">Find in my library</a>`;
-				}
-				html += `<li>${esc(r.title)} — ${id} — <em>${esc(r.reason || r.status)}</em>${lib}</li>`;
-			}
-			html += "</ul>";
-		}
-		let found = rows.filter(r => r.status === "found" && !r.duplicate);
-		if (found.length) {
-			// Show the license when known; otherwise the OA status (a color like
-			// "gold"/"green"), clearly labelled so the two aren't conflated.
-			let annot = r => r.license ? esc(r.license)
-				: (r.oaStatus ? "OA: " + esc(r.oaStatus) : "");
-			let line = r => esc(r.title) + (annot(r) ? ` <em>(${annot(r)})</em>` : "");
-			html += `<p>Attached: ${found.map(line).join(" · ")}</p>`;
-		}
-
-		let note = new Zotero.Item("note");
-		note.libraryID = Zotero.Libraries.userLibraryID;
-		note.setNote(html);
-		note.addTag("fullvahti:report");
-		await note.saveTx();
 	},
 
 	tagAllowed(tag) {
@@ -1649,7 +1575,7 @@ var FullVahti = {
 	// Pure: render the audit log as a plain-text summary for a dialog. Newest first,
 	// most recent `limit` shown. Side-effect-free so it can be unit-tested.
 	formatAuditLog(log, limit) {
-		if (!log || !log.length) return "No CiteVahti write-backs have been recorded yet.";
+		if (!log || !log.length) return "No write-backs have been recorded yet.";
 		let n = limit || 30;
 		let shown = log.slice(-n).reverse();
 		let lines = shown.map(r => {
@@ -1669,14 +1595,14 @@ var FullVahti = {
 		let log = this.readAudit();
 		let text = this.formatAuditLog(log, 30);
 		if (!log.length) {
-			window.alert("FullVahti — CiteVahti write-back audit log\n\n" + text);
+			window.alert("ZotPDF — write-back audit log\n\n" + text);
 			return;
 		}
 		// Offer to clear so the log can't accrete indefinitely; clearing is itself
 		// a deliberate, confirmed user action (never automatic).
 		let clear = Services.prompt.confirmEx(
 			window,
-			"FullVahti — CiteVahti write-back audit log",
+			"ZotPDF — write-back audit log",
 			text,
 			Services.prompt.BUTTON_POS_0 * Services.prompt.BUTTON_TITLE_IS_STRING
 				+ Services.prompt.BUTTON_POS_1 * Services.prompt.BUTTON_TITLE_IS_STRING,
@@ -1685,7 +1611,7 @@ var FullVahti = {
 		if (clear === 1) {
 			let ok = Services.prompt.confirm(
 				window,
-				"FullVahti",
+				"ZotPDF",
 				"Clear the entire write-back audit log? This only deletes the history "
 				+ "record — it does not change any tags already written to your library."
 			);
@@ -1697,14 +1623,14 @@ var FullVahti = {
 	},
 
 	// -----------------------------------------------------------------
-	// WriteVahti — gated local writeback endpoint for CiteVahti.
+	// Gated local write-back endpoint for external tools.
 	// Default OFF. Local server only (127.0.0.1:23119). Token required.
 	//
 	// The safety invariant (no silent Zotero writes) is enforced here, not by
 	// the caller: a write is only applied when writeback is enabled AND the token
 	// matches AND every tag is in the allowlist. Callers preview first with
 	// dryRun:true (nothing is written), and any applied write is recorded to the
-	// audit log and reversible through /fullvahti/undo.
+	// audit log and reversible through /zotpdf/undo.
 	// -----------------------------------------------------------------
 	tokenOK(data) {
 		let token = this.getPref("writebackToken");
@@ -1720,20 +1646,20 @@ var FullVahti = {
 			supportedMethods: ["GET"],
 			// MUST be async: in Zotero 9 a synchronous init() that returns an array
 			// never responds (the request hangs forever), while an async init
-			// resolves correctly. The /fullvahti/tag handler is already async — match it.
+			// resolves correctly. The /zotpdf/tag handler is already async — match it.
 			init: async function () {
 				return [200, "application/json", JSON.stringify({
-					plugin: "fullvahti",
+					plugin: "zotpdf",
 					version: self.version,
 					writeback: !!self.getPref("writebackEnabled"),
-					// Let CiteVahti detect the safety features it can rely on.
+					// Let clients detect the safety features it can rely on.
 					capabilities: { dryRun: true, audit: true, undo: true },
 					allowedTagPrefixes: self.ALLOWED_TAG_PREFIXES,
-					endpoints: ["/fullvahti/ping", "/fullvahti/tag", "/fullvahti/audit", "/fullvahti/undo"],
+					endpoints: ["/zotpdf/ping", "/zotpdf/tag", "/zotpdf/audit", "/zotpdf/undo"],
 				})];
 			},
 		};
-		Zotero.Server.Endpoints["/fullvahti/ping"] = Ping;
+		Zotero.Server.Endpoints["/zotpdf/ping"] = Ping;
 
 		function Tag() {}
 		Tag.prototype = {
@@ -1742,21 +1668,21 @@ var FullVahti = {
 			permitBookmarklet: false,
 			init: async function (requestData) {
 				if (!self.getPref("writebackEnabled")) {
-					return deny(403, "writeback disabled — enable it in Zotero Settings → FullVahti");
+					return deny(403, "writeback disabled — enable it in Zotero Settings → ZotPDF");
 				}
 				let data = requestData.data || {};
 				if (!self.tokenOK(data)) {
-					return deny(403, "missing or wrong token — copy it from Zotero Settings → FullVahti");
+					return deny(403, "missing or wrong token — copy it from Zotero Settings → ZotPDF");
 				}
 				if (!data.itemKey || (!Array.isArray(data.add) && !Array.isArray(data.remove))) {
 					return deny(400, "expected { token, itemKey, add: [tags] and/or remove: [tags], dryRun?: bool }");
 				}
-				// Only Vahtian-namespace tags may be written, even with a valid token.
+				// Only allowlisted tags may be written, even with a valid token.
 				let bad = [...(data.add || []), ...(data.remove || [])]
 					.map(String)
 					.filter(t => !self.tagAllowed(t));
 				if (bad.length) {
-					return deny(400, "tags must use an allowed Vahtian prefix ("
+					return deny(400, "tags must use an allowed prefix ("
 						+ self.ALLOWED_TAG_PREFIXES.join(", ") + "); rejected: " + bad.join(", "));
 				}
 				let item = Zotero.Items.getByLibraryAndKey(Zotero.Libraries.userLibraryID, data.itemKey);
@@ -1791,14 +1717,14 @@ var FullVahti = {
 				})];
 			},
 		};
-		Zotero.Server.Endpoints["/fullvahti/tag"] = Tag;
+		Zotero.Server.Endpoints["/zotpdf/tag"] = Tag;
 
 		function Audit() {}
 		Audit.prototype = {
 			supportedMethods: ["GET"],
 			init: async function (requestData) {
 				if (!self.getPref("writebackEnabled")) {
-					return deny(403, "writeback disabled — enable it in Zotero Settings → FullVahti");
+					return deny(403, "writeback disabled — enable it in Zotero Settings → ZotPDF");
 				}
 				// The audit log lists item keys and review decisions, so it is
 				// token-gated like writes. Token comes via the query string.
@@ -1820,7 +1746,7 @@ var FullVahti = {
 				})];
 			},
 		};
-		Zotero.Server.Endpoints["/fullvahti/audit"] = Audit;
+		Zotero.Server.Endpoints["/zotpdf/audit"] = Audit;
 
 		function Undo() {}
 		Undo.prototype = {
@@ -1829,7 +1755,7 @@ var FullVahti = {
 			permitBookmarklet: false,
 			init: async function (requestData) {
 				if (!self.getPref("writebackEnabled")) {
-					return deny(403, "writeback disabled — enable it in Zotero Settings → FullVahti");
+					return deny(403, "writeback disabled — enable it in Zotero Settings → ZotPDF");
 				}
 				let data = requestData.data || {};
 				if (!self.tokenOK(data)) {
@@ -1881,13 +1807,13 @@ var FullVahti = {
 				})];
 			},
 		};
-		Zotero.Server.Endpoints["/fullvahti/undo"] = Undo;
+		Zotero.Server.Endpoints["/zotpdf/undo"] = Undo;
 	},
 
 	unregisterEndpoints() {
-		delete Zotero.Server.Endpoints["/fullvahti/ping"];
-		delete Zotero.Server.Endpoints["/fullvahti/tag"];
-		delete Zotero.Server.Endpoints["/fullvahti/audit"];
-		delete Zotero.Server.Endpoints["/fullvahti/undo"];
+		delete Zotero.Server.Endpoints["/zotpdf/ping"];
+		delete Zotero.Server.Endpoints["/zotpdf/tag"];
+		delete Zotero.Server.Endpoints["/zotpdf/audit"];
+		delete Zotero.Server.Endpoints["/zotpdf/undo"];
 	},
 };

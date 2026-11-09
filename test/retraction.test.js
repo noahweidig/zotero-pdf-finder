@@ -105,7 +105,7 @@ test("retraction report highlights retracted items and lists unchecked", async (
 	assert.match(html, /Mystery/);
 	// the clean item is not called out in either actionable list
 	assert.doesNotMatch(html, /Good paper/);
-	assert.ok(notes[0]._tags.includes("fullvahti:report"));
+	assert.ok(notes[0]._tags.includes("zotpdf:report"));
 });
 
 test("retraction: prefix is allowlisted for writeback", () => {

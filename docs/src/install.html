@@ -1,0 +1,14 @@
+<h1>Install</h1>
+<ol class="steps">
+  <li><strong>Download</strong> <a href="{{xpi}}"><code>zotpdf.xpi</code></a> from the <a href="{{releases}}">latest release</a>.
+    <div class="note">In Firefox, right-click the link and choose <strong>Save Link As…</strong>. A plain click makes Firefox try to install it as a Firefox add-on.</div></li>
+  <li>In Zotero, open <strong>Tools → Plugins</strong>.</li>
+  <li><strong>Drag the .xpi into that window</strong>, or click the gear ⚙ → <strong>Install Plugin From File…</strong> and pick it.</li>
+</ol>
+<p>No restart is needed. If you have another PDF-finder plugin installed, uninstall it first to avoid duplicate menus. ZotPDF appears under Tools → Plugins and as a <strong>ZotPDF</strong> submenu in the item right-click menu and the Tools menu. Zotero checks for new versions automatically.</p>
+
+<h2>Build from source</h2>
+<pre><code>git clone {{repo}}.git
+cd ZotPDF
+npm run lint && npm test
+npm run build      # writes build/zotpdf-&lt;version&gt;.xpi and build/zotpdf.xpi</code></pre>

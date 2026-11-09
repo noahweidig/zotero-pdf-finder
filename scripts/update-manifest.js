@@ -1,6 +1,6 @@
 /*
  * Write the update manifest Zotero polls for new versions.
- * Usage: node scripts/update-manifest.js build/zotero-openalex-pdf-0.1.0.xpi
+ * Usage: node scripts/update-manifest.js build/zotpdf-0.5.0.xpi
  */
 const fs = require('fs');
 const path = require('path');

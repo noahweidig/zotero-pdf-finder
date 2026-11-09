@@ -1,162 +1,63 @@
 # ZotPDF
 
-Zotero plugin combining two projects in one `zotpdf.xpi`:
+**Select references in Zotero, right-click, and get free legal PDFs attached, retractions flagged, and bad citation metadata reported.**
 
-- **OpenAlex PDF Finder** (Littview, MIT): right-click **Find PDF via OpenAlex**; matches by DOI, PMID, arXiv ID or strict title, with optional OpenAlex-hosted full text.
-- **FullVahti** (Heidi Andersén / Vahtian, Apache-2.0, [source](https://github.com/heidihelena/fullvahti)): **FullVahti** menu items. Finds OA PDFs via Unpaywall and PubMed Central, tags each item (`fulltext:*`), writes one report note, checks retractions (PubMed + Crossref/Retraction Watch) and citation metadata (Crossref), and keeps the audited CiteVahti write-back endpoint.
-
-**How they connect:** FullVahti's PDF run tries Unpaywall, then PMC, then OpenAlex (open-access locations with a direct PDF link only; no paywalled pages, no credit-costing hosted downloads). Items with no DOI/PMID/PMCID get an OpenAlex title match instead of an automatic `check-needed`. Everything else is unchanged in each plugin.
-
-**Install:** download `zotpdf.xpi` from the latest release, then Zotero → Tools → Plugins → ⚙ → Install Plugin From File.
-
-> ZotPDF has its own add-on ID (`zotpdf@noahweidig`). Uninstall OpenAlex PDF Finder and FullVahti first, or you'll get duplicate menus.
-
-Build: `npm run build` (writes `build/zotpdf.xpi`). Checks: `npm run lint && npm test`.
-
-Licenses: MIT (`LICENSE`) for OpenAlex PDF Finder code; Apache-2.0 (`LICENSE-FULLVAHTI`, `NOTICE`) for `src/fullvahti.js`; ISC (`LICENSE-LUCIDE`) for the icon.
-
----
-
-# OpenAlex PDF Finder for Zotero (upstream README)
-
-**Select references in Zotero, right-click, and get their PDFs attached — free, no account needed.**
-
-The plugin looks each reference up in [OpenAlex](https://openalex.org), the open catalog of
-250+ million scholarly works, finds a legal open-access copy (publisher, PubMed Central,
-arXiv, institutional repositories), and attaches it to the item.
-
-Made for literature reviews: you've just imported 300 references from a database search
-and you need the PDFs behind them.
+ZotPDF looks for each PDF in one pass through Unpaywall, PubMed Central and OpenAlex, and
+adds retraction and metadata checks on top. Made for literature reviews: you've just
+imported 300 references and need the PDFs behind them, and a clean reference list.
 
 <p align="center">
-  <a href="https://github.com/noahweidig/zotero-pdf-finder/releases/latest/download/zotpdf.xpi"><b>⬇ Download the plugin (.xpi)</b></a>
-  &nbsp;·&nbsp; Works with Zotero 7, 8, 9 and 10 &nbsp;·&nbsp; Free and open source
+  <a href="https://github.com/noahweidig/ZotPDF/releases/latest/download/zotpdf.xpi"><b>⬇ Download zotpdf.xpi</b></a>
+  &nbsp;·&nbsp; <a href="https://noahweidig.github.io/ZotPDF/"><b>Documentation</b></a>
+  &nbsp;·&nbsp; Zotero 7+ &nbsp;·&nbsp; Free and open source
 </p>
 
-![The progress window after a run: six PDFs attached, one reference not found](docs/images/progress-window.png)
+## What it does
 
----
+- **Find PDFs.** Per item, the first of 14 free sources to return a real PDF wins:
+  Unpaywall, PubMed Central, Europe PMC, Semantic Scholar, Crossref (open-licensed links
+  and linked preprints), CORE, OpenAIRE, preprint servers and repositories (arXiv, bioRxiv,
+  medRxiv, OSF, PeerJ, Zenodo, Figshare), HAL, DOAJ, OpenAlex (links and optional hosted
+  full text), then free-to-read pages through Zotero's downloader. Dead links are retried
+  through the Internet Archive. Matches by DOI, PMID, arXiv ID or exact title; the result
+  column names the source that worked. Every source has a checkbox. Each item is tagged
+  `fulltext:pdf-found`, `fulltext:pdf-missing` or `fulltext:check-needed`.
+  **No notes are created.**
+- **Check retractions.** PubMed plus Crossref (which carries the Retraction Watch
+  database). Tags `retraction:retracted`, `retraction:none` or `retraction:check-needed`.
+- **Check citation metadata.** Compares each record with Crossref and flags missing
+  fields and mismatches, which often mean the wrong DOI. Read-only.
+- **One menu.** Right-click → **ZotPDF**: Find PDFs, Check for retractions, Check
+  citation metadata, or Full check. For a tagged batch use **Tools → ZotPDF**.
+- **One progress table** per run, with a result for every item and a Cancel button.
 
-## Install (1 minute)
+## Install
 
-1. **Download** [`zotpdf.xpi`](https://github.com/noahweidig/zotero-pdf-finder/releases/latest/download/zotpdf.xpi).
-   > Using **Firefox**? Right-click the link and choose **Save Link As…**. A plain click
-   > makes Firefox try to install it as a Firefox add-on, which won't work.
-2. In Zotero, open **Tools → Plugins**.
-3. **Drag the `.xpi` file into that window.** (Or click the gear icon ⚙ → **Install
-   Plugin From File…** and pick it.)
+1. Download [`zotpdf.xpi`](https://github.com/noahweidig/ZotPDF/releases/latest/download/zotpdf.xpi).
+   (Firefox: right-click → **Save Link As…**.)
+2. In Zotero: **Tools → Plugins**, drag the file in (or ⚙ → **Install Plugin From File…**).
 
-That's it. No restart, no account, no API key. You should see it in the list:
+No account, no API key, no restart. If another PDF-finder plugin is installed,
+uninstall it first to avoid duplicate menus.
 
-![Zotero's plugin manager with OpenAlex PDF Finder installed and enabled](docs/images/plugins-manager.png)
+## Docs
 
-Zotero checks for new versions of the plugin automatically.
+Everything is on the documentation site: [install](https://noahweidig.github.io/ZotPDF/install.html),
+[usage](https://noahweidig.github.io/ZotPDF/usage.html),
+[how the PDF chain works](https://noahweidig.github.io/ZotPDF/how-it-works.html),
+[checks](https://noahweidig.github.io/ZotPDF/checks.html),
+[settings](https://noahweidig.github.io/ZotPDF/settings.html),
+[privacy](https://noahweidig.github.io/ZotPDF/privacy.html) and
+[troubleshooting](https://noahweidig.github.io/ZotPDF/troubleshooting.html).
 
-> **Upgraded Zotero and the menu item disappeared?** Version 0.1 only supported
-> Zotero 9, so newer Zotero switched it off. Download the file above and install it the
-> same way. It replaces the old version, and from 0.3 on it keeps working across Zotero
-> updates.
+## Privacy
 
-## Use it
+DOIs, PMIDs, arXiv IDs and titles of the items you select go to the services above, with
+your contact email where an API asks for one. Nothing is stored elsewhere; no accounts,
+no analytics. See [privacy](https://noahweidig.github.io/ZotPDF/privacy.html).
 
-1. Select one or many items in your library (**Cmd/Ctrl + A** selects the whole collection).
-2. **Right-click → Find PDF via OpenAlex.**
-   You can also use the menu bar: **Tools → Find PDFs via OpenAlex**.
+## Licenses
 
-   <img src="docs/images/right-click-menu.png" alt="Zotero's right-click menu with Find PDF via OpenAlex as the last item" width="300">
-
-3. A window lists every item and what happened to it. You can keep working while it runs,
-   and **Cancel** stops it after the current item.
-
-PDFs land in your library like any other attachment, under the item they belong to:
-
-![Zotero library after a run: each reference now has a PDF attachment](docs/images/library-with-pdfs.png)
-
-Items that already have a PDF are skipped, so it's safe to run it on the whole collection
-again later.
-
-### What the results mean
-
-| Status | Meaning |
-| --- | --- |
-| **PDF attached** | Done. |
-| **Not found on OpenAlex** | OpenAlex has no record matching the DOI, PMID or title. Common for conference abstracts, grey literature and very recent items. |
-| **No full text available** | The work was found, but no open-access copy exists. It's probably paywalled. |
-| **No PDF could be downloaded** | Open-access links exist, but they didn't return a PDF. Publisher sites sometimes block downloads. |
-| **Possible match rejected — the years disagree** | A work with exactly this title exists, but in a different year. Check it by hand; the plugin won't guess. |
-
-## Questions
-
-**Is it really free? Do I need an OpenAlex API key?**
-No key, no account, no cost. A 1,000-reference review uses about 20 lookups, and the
-free allowance is about 1,000 lookups a day. PDFs come straight from publishers and
-repositories and don't count against anything. A free key is only useful if you want
-OpenAlex's own PDF copies as an extra fallback (see [Settings](#settings)).
-
-**Will it attach the wrong paper?**
-It's built not to. DOI, PMID and arXiv matches are exact. A title-only match is accepted
-only when the title is identical (ignoring punctuation and capitals) **and** the year is
-within one year. Anything less is reported, never attached.
-
-**How is this different from Zotero's built-in "Find Available PDF"?**
-Zotero's built-in lookup relies mainly on the DOI. This plugin also finds papers by **PMID**, by
-**arXiv ID**, and by **exact title** when there's no identifier at all, which is common
-in exports from databases like Scopus, Web of Science or Ovid. It also searches every
-copy OpenAlex knows about. Run both: Zotero's first, then this on whatever is still
-missing.
-
-**What about paywalled papers?**
-It only uses copies that are legally free to read. As a last resort it tries the
-publisher's page, which can work if you're on a campus network with IP-based access.
-
-**What data leaves my computer?**
-The DOIs, PMIDs and titles of the items you select are sent to OpenAlex to look them up.
-Nothing else, and nothing from your library is stored anywhere.
-
-## Settings
-
-**Zotero → Settings → OpenAlex PDF** (on Windows/Linux: **Edit → Settings**). Every
-setting is optional; the defaults are fine for most people.
-
-![The OpenAlex PDF settings pane](docs/images/settings.png)
-
-| Setting | What it does |
-| --- | --- |
-| **Contact email** | Sent to OpenAlex so your requests go to its faster "polite pool". |
-| **API key** | Free at [openalex.org/settings/api](https://openalex.org/settings/api). Unlocks OpenAlex-hosted PDFs (~60 million works, ~100 downloads/day free) as a fallback when publisher links fail. **Test Key** checks it. |
-| **Download PDFs hosted by OpenAlex** | Use those hosted copies when you have a key. |
-| **Try the OpenAlex copy first** | Uses your hosted-PDF allowance before trying free links. Off by default. |
-| **Look up items without a DOI or PMID by title** | The strict title match described above. |
-| **Skip items that already have a PDF** | Turn off to add a second copy. |
-| **Record the matched OpenAlex work ID in Extra** | Writes `OpenAlex: W1234567890` into the item's Extra field. |
-
-## Troubleshooting
-
-- **No "Find PDF via OpenAlex" in the right-click menu.** Open **Tools → Plugins**
-  and check that the plugin is listed and switched on. If it says it's incompatible
-  with your Zotero version, [download the latest version](https://github.com/Littview/zotero-openalex-pdf/releases/latest).
-  The menu item is hidden when only standalone notes are selected.
-- **"OpenAlex rate limit reached".** You've used the day's free lookups (it resets at
-  midnight UTC). Wait, or add a free API key.
-- **Something else.** Turn on **Help → Debug Output Logging**, run the plugin again,
-  then **Help → Debug Output Logging → View Output**. Lines starting with
-  `[OpenAlex PDF Finder]` are this plugin's. Please
-  [open an issue](https://github.com/Littview/zotero-openalex-pdf/issues) with them.
-
-## Requirements
-
-Zotero 7 or later (tested on 7.0, 8.0, 9.0 and 10.0), on macOS, Windows or Linux.
-
-## Credits
-
-Metadata and full-text links come from [OpenAlex](https://openalex.org), run by the
-non-profit [OurResearch](https://ourresearch.org). If OpenAlex saves you time, consider
-supporting them.
-
-Developers: see [CONTRIBUTING.md](CONTRIBUTING.md) to build from source or help out.
-Licensed under [MIT](LICENSE).
-
----
-
-Built by **[Littview](https://www.littview.com/?utm_source=github&utm_medium=readme&utm_campaign=zotero-openalex-pdf)**,
-systematic review software with AI assistance for screening, extraction and reporting.
+ZotPDF includes code under the MIT and Apache-2.0 licenses and a Lucide icon (ISC):
+[`LICENSE`](LICENSE), [`LICENSE-APACHE`](LICENSE-APACHE), [`NOTICE`](NOTICE),
+[`LICENSE-LUCIDE`](LICENSE-LUCIDE). Developers: see [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -1,9 +1,9 @@
 /*
- * Zotero OpenAlex PDF Finder — matching items to OpenAlex works and attaching PDFs.
- * Copyright (c) 2026 Littview Inc. — MIT licensed. See LICENSE.
+ * ZotPDF — matching items to OpenAlex works and turning them into PDF sources.
+ * Portions derived from MIT- and Apache-2.0-licensed works; see LICENSE, LICENSE-APACHE and NOTICE.
  */
 
-ZoteroOpenAlex.Finder = {
+ZotPDF.Finder = {
 	// Preferred order when several open-access copies exist
 	VERSION_RANK: {
 		publishedVersion: 0,
@@ -15,224 +15,97 @@ ZoteroOpenAlex.Finder = {
 
 	// A second invocation while a run is in flight would see items whose download has
 	// not landed yet and attach a duplicate, and would clear the first run's rows
-	_running: false,
-
 	/**
-	 * Entry point for the menu commands.
-	 *
-	 * @param {Zotero.Item[]} items
-	 * @param {Window} win
+	 * Everything ZotPDF's pipeline needs from OpenAlex for one item, after Unpaywall
+	 * and PubMed Central came up empty:
+	 *   locations  open-access PDF links (OpenAlex-marked OA, direct PDF only), best first
+	 *   hosted     () => {bytes, url} | null   OpenAlex-hosted full text (needs a key)
+	 *   publisher  () => source | null         publisher pages through Zotero's downloader
+	 *   preferHosted  try hosted before the links
+	 * Lookup errors propagate to the caller.
 	 */
-	async run(items, win) {
-		if (this._running) {
-			ZoteroOpenAlex.popup(
-				ZoteroOpenAlex.getString('openalex-pdf-progress-title'),
-				ZoteroOpenAlex.getString('openalex-pdf-already-running')
-			);
-			return;
+	async fallbackFor(item, landings = []) {
+		let work = (await this._matchWorks([item], null)).get(item.id) || this._arXivWork(item);
+		if (!work && !landings.length) {
+			return { locations: [] };
 		}
-
-		let candidates = this._collectItems(items);
-
-		if (!candidates.length) {
-			ZoteroOpenAlex.popup(
-				ZoteroOpenAlex.getString('openalex-pdf-progress-title'),
-				ZoteroOpenAlex.getString('openalex-pdf-no-eligible-items')
-			);
-			return;
-		}
-
-		// OpenAlex-hosted PDFs need a key. Without one they are simply skipped: the
-		// plugin is meant to work out of the box, so it never nags for a key
-		let hostedWanted = !!ZoteroOpenAlex.getPref('useHostedContent') && !!ZoteroOpenAlex.getAPIKey();
-
-		this._running = true;
-		try {
-			await this._process(candidates, hostedWanted);
-		}
-		finally {
-			this._running = false;
-		}
-	},
-
-	async _process(candidates, hostedWanted) {
-		ZoteroOpenAlex.API.resetKeyState();
-
-		let progress = ZoteroOpenAlex.createProgress();
-		for (let item of candidates) {
-			progress.add(item);
-		}
-		progress.setStatus(ZoteroOpenAlex.getString('openalex-pdf-status-looking-up'));
-
-		let matches;
-		let rejected = new Set();
-		try {
-			matches = await this._matchWorks(candidates, progress, rejected);
-		}
-		catch (e) {
-			Zotero.logError(e);
-			let message = this._describeError(e);
-			for (let item of candidates) {
-				progress.failed(item, message);
-			}
-			progress.setStatus(message);
-			return;
-		}
-
-		let delay = parseInt(ZoteroOpenAlex.getPref('requestDelay'), 10) || 0;
-		let counts = { attached: 0, notFound: 0, failed: 0 };
-		let processed = 0;
-		// Shared across items so one rejected key does not re-fail on every item
-		let hosted = { enabled: hostedWanted, disabledReason: null };
-		if (ZoteroOpenAlex.API.keyRejected) {
-			// Metadata fell back to anonymous access; hosted downloads cannot
-			hosted.enabled = false;
-			hosted.disabledReason = ZoteroOpenAlex.getString('openalex-pdf-error-auth');
-		}
-
-		for (let item of candidates) {
-			if (progress.cancelled) {
-				break;
-			}
-			processed++;
-			progress.setStatus(ZoteroOpenAlex.getString('openalex-pdf-status-processing', {
-				current: processed,
-				total: candidates.length
-			}));
-
-			let work = matches.get(item.id) || this._arXivWork(item);
-			if (!work) {
-				counts.notFound++;
-				progress.failed(item, rejected.has(item.id)
-					? ZoteroOpenAlex.getString('openalex-pdf-result-year-mismatch')
-					: ZoteroOpenAlex.getString('openalex-pdf-result-no-work'));
-				continue;
-			}
-
-			progress.processing(item, ZoteroOpenAlex.getString('openalex-pdf-result-downloading'));
-
+		if (work && ZotPDF.getPref('saveWorkIDToExtra')) {
 			try {
-				let result = await this._attachPDF(item, work, hosted, progress);
-				if (result.attached) {
-					counts.attached++;
-					progress.succeeded(item, result.message);
-				}
-				else {
-					counts.notFound++;
-					progress.failed(item, result.message);
-				}
+				await this._saveWorkID(item, work);
 			}
 			catch (e) {
 				Zotero.logError(e);
-				counts.failed++;
-				progress.failed(item, this._describeError(e));
-			}
-
-			if (ZoteroOpenAlex.getPref('saveWorkIDToExtra')) {
-				try {
-					await this._saveWorkID(item, work);
-				}
-				catch (e) {
-					Zotero.logError(e);
-				}
-			}
-
-			if (delay > 0 && processed < candidates.length) {
-				await ZoteroOpenAlex.API.delay(delay);
 			}
 		}
 
-		let status = ZoteroOpenAlex.getString('openalex-pdf-status-done', {
-			attached: counts.attached,
-			missing: counts.notFound,
-			failed: counts.failed
-		});
-		if (hosted.disabledReason) {
-			status += ' — ' + hosted.disabledReason;
-		}
-		if (progress.cancelled) {
-			status = ZoteroOpenAlex.getString('openalex-pdf-status-cancelled') + ' — ' + status;
-		}
-		progress.setStatus(status);
-		ZoteroOpenAlex.log(`Finished: ${JSON.stringify(counts)}`);
-	},
-
-	/**
-	 * For FullVahti: open-access PDF links for one item. Only locations OpenAlex marks
-	 * open access with a direct PDF URL; no landing pages, no hosted (credit-costing)
-	 * downloads. Never throws on a plain miss.
-	 *
-	 * @return {Promise<{locations: {url: String, license: String}[]}>}
-	 */
-	async findOAPDFLocations(item) {
-		let work = (await this._matchWorks([item], null)).get(item.id) || this._arXivWork(item);
-		if (!work) {
-			return { locations: [] };
-		}
-		let candidates = [work.best_oa_location, ...(work.locations || [])];
-		let arXiv = this._arXivWork(item);
-		if (arXiv && arXiv !== work) {
-			candidates.push(...arXiv.locations);
-		}
-		let seen = new Set();
 		let ranked = [];
-		for (let loc of candidates) {
-			if (!loc || !loc.is_oa || !loc.pdf_url || seen.has(loc.pdf_url)) {
-				continue;
+		let canHosted = false;
+		if (work) {
+			let candidates = [work.best_oa_location, ...(work.locations || [])];
+			let arXiv = this._arXivWork(item);
+			if (arXiv && arXiv !== work) {
+				candidates.push(...arXiv.locations);
 			}
-			seen.add(loc.pdf_url);
-			let rank = this.VERSION_RANK[loc.version];
-			ranked.push({ url: loc.pdf_url, license: loc.license || '', rank: rank === undefined ? 3 : rank });
+			let seen = new Set();
+			for (let loc of candidates) {
+				if (!loc || !loc.is_oa || !loc.pdf_url || seen.has(loc.pdf_url)) {
+					continue;
+				}
+				seen.add(loc.pdf_url);
+				let rank = this.VERSION_RANK[loc.version];
+				ranked.push({ url: loc.pdf_url, license: loc.license || '', rank: rank === undefined ? 3 : rank });
+			}
+			ranked.sort((a, b) => a.rank - b.rank);
+
+			let api = ZotPDF.API;
+			canHosted = !!ZotPDF.getPref('useHostedContent') && !!ZotPDF.getAPIKey()
+				&& !api.keyRejected && api.hasHostedPDF(work) && !!api.hostedPDFURL(work);
 		}
-		ranked.sort((a, b) => a.rank - b.rank);
-		return { locations: ranked.slice(0, this.MAX_RESOLVERS).map(({ url, license }) => ({ url, license })) };
+
+		return {
+			locations: ranked.slice(0, this.MAX_RESOLVERS).map(({ url, license }) => ({ url, license })),
+			preferHosted: !!ZotPDF.getPref('preferHostedContent'),
+			hosted: canHosted ? () => this._downloadHosted(work) : null,
+			publisher: ZotPDF.getPref('tryPublisherPages')
+				? () => this._attachFromPublisher(item, work, landings)
+				: null
+		};
 	},
 
-	//
-	// Item selection
-	//
+	async _downloadHosted(work) {
+		let tempDir = (await Zotero.Attachments.createTemporaryStorageDirectory()).path;
+		let tempPath = PathUtils.join(tempDir, 'openalex.pdf');
+		try {
+			let url = await ZotPDF.API.downloadHostedPDF(work, tempPath);
+			return { bytes: await IOUtils.read(tempPath), url };
+		}
+		finally {
+			await IOUtils.remove(tempDir, { recursive: true, ignoreAbsent: true });
+		}
+	},
 
 	/**
-	 * Regular, editable items with no PDF yet. Selecting an attachment counts as
-	 * selecting its parent, which is what happens when people click around in the
-	 * middle pane.
+	 * Hand the work's links, landing pages included, to Zotero's own downloader. It
+	 * uses the browser session and translators, so licensed access through your
+	 * institution works. Returns a source label when a file got attached.
 	 */
-	_collectItems(items) {
-		let seen = new Set();
-		let result = [];
-		let skipWithPDF = ZoteroOpenAlex.getPref('skipItemsWithPDF');
-
-		for (let item of items) {
-			if (!item) {
-				continue;
-			}
-			if (!item.isRegularItem() && item.parentItem) {
-				item = item.parentItem;
-			}
-			if (!item.isRegularItem() || seen.has(item.id)) {
-				continue;
-			}
-			seen.add(item.id);
-
-			let library = Zotero.Libraries.get(item.libraryID);
-			if (!library || !library.editable || !library.filesEditable) {
-				continue;
-			}
-			if (skipWithPDF && this._hasPDF(item)) {
-				continue;
-			}
-			result.push(item);
-		}
-		return result;
-	},
-
-	_hasPDF(item) {
-		for (let attachment of Zotero.Items.get(item.getAttachments())) {
-			if (attachment.attachmentContentType === 'application/pdf') {
-				return true;
+	async _attachFromPublisher(item, work, landings = []) {
+		let resolvers = this._buildURLResolvers(work || {}, this._arXivWork(item));
+		let known = new Set(resolvers.map(r => r.url || r.pageURL));
+		for (let page of landings) {
+			if (!known.has(page) && resolvers.length < this.MAX_RESOLVERS + 6) {
+				known.add(page);
+				resolvers.push({ pageURL: page, accessMethod: 'Free-to-read page' });
 			}
 		}
-		return false;
+		if (!resolvers.length) {
+			return null;
+		}
+		let attachment = await Zotero.Attachments.addFileFromURLs(item, resolvers);
+		if (!attachment) {
+			return null;
+		}
+		return resolvers[0].url || resolvers[0].pageURL || 'publisher page';
 	},
 
 	//
@@ -243,7 +116,7 @@ ZoteroOpenAlex.Finder = {
 	 * @return {Promise<Map<Number, Object>>} item ID -> OpenAlex work
 	 */
 	async _matchWorks(items, progress, rejected = new Set()) {
-		let api = ZoteroOpenAlex.API;
+		let api = ZotPDF.API;
 		let matches = new Map();
 		let identifiers = new Map();
 
@@ -287,7 +160,7 @@ ZoteroOpenAlex.Finder = {
 		}
 
 		// Title search last: one request per item, and only accepted on an exact match
-		if (ZoteroOpenAlex.getPref('titleSearchFallback')) {
+		if (ZotPDF.getPref('titleSearchFallback')) {
 			for (let item of items) {
 				if (matches.has(item.id) || (progress && progress.cancelled)) {
 					continue;
@@ -324,7 +197,7 @@ ZoteroOpenAlex.Finder = {
 	},
 
 	_identifiers(item) {
-		let api = ZoteroOpenAlex.API;
+		let api = ZotPDF.API;
 		let extra = item.getField('extra') || '';
 
 		let doi = api.normalizeDOI(item.getField('DOI') || item.getExtraField('DOI'));
@@ -421,122 +294,6 @@ ZoteroOpenAlex.Finder = {
 		return this._normalizeTitle(candidateTitle) === ids.normalizedTitle;
 	},
 
-	//
-	// Attaching
-	//
-
-	async _attachPDF(item, work, hostedState, progress) {
-		let api = ZoteroOpenAlex.API;
-		let useHosted = hostedState.enabled && api.hasHostedPDF(work) && !!api.hostedPDFURL(work);
-		let preferHosted = !!ZoteroOpenAlex.getPref('preferHostedContent');
-		let resolvers = this._buildURLResolvers(work, this._arXivWork(item));
-
-		let attempts = [];
-		if (useHosted && preferHosted) {
-			attempts.push('hosted');
-		}
-		if (resolvers.length) {
-			attempts.push('links');
-		}
-		if (useHosted && !preferHosted) {
-			attempts.push('hosted');
-		}
-
-		if (!attempts.length) {
-			return {
-				attached: false,
-				message: ZoteroOpenAlex.getString('openalex-pdf-result-no-fulltext')
-			};
-		}
-
-		let lastError = null;
-		for (let attempt of attempts) {
-			try {
-				if (attempt === 'hosted') {
-					progress.processing(item,
-						ZoteroOpenAlex.getString('openalex-pdf-result-downloading-hosted'));
-					let attachment = await this._attachHostedPDF(item, work);
-					if (attachment) {
-						return {
-							attached: true,
-							message: ZoteroOpenAlex.getString('openalex-pdf-result-attached-hosted')
-						};
-					}
-				}
-				else {
-					let attachment = await Zotero.Attachments.addFileFromURLs(item, resolvers, {
-						onAccessMethodStart: (accessMethod) => {
-							progress.processing(item, accessMethod || '');
-						}
-					});
-					if (attachment) {
-						return {
-							attached: true,
-							message: ZoteroOpenAlex.getString('openalex-pdf-result-attached-link')
-						};
-					}
-				}
-			}
-			catch (e) {
-				// A rejected key or exhausted credits means the hosted source is unusable
-				// for the rest of this run, but publisher links may still work
-				if (attempt === 'hosted'
-						&& (e.openAlexCode === 'auth' || e.openAlexCode === 'rate-limit')) {
-					hostedState.enabled = false;
-					hostedState.disabledReason = this._describeError(e);
-					ZoteroOpenAlex.log('Disabling OpenAlex-hosted downloads: ' + e.message);
-				}
-				Zotero.logError(e);
-				lastError = e;
-			}
-		}
-
-		return {
-			attached: false,
-			message: lastError
-				? this._describeError(lastError)
-				: ZoteroOpenAlex.getString('openalex-pdf-result-not-downloaded')
-		};
-	},
-
-	/**
-	 * Download from content.openalex.org ourselves rather than going through
-	 * Zotero's URL resolvers, so that the authenticated URL is never persisted on
-	 * the attachment item. The item records the plain, key-free URL instead.
-	 */
-	async _attachHostedPDF(item, work) {
-		let api = ZoteroOpenAlex.API;
-		let title = Zotero.getString('attachment.fullText');
-		let tempDir = (await Zotero.Attachments.createTemporaryStorageDirectory()).path;
-		let tempPath = PathUtils.join(tempDir, 'openalex.pdf');
-
-		let attachment;
-		try {
-			let canonicalURL = await api.downloadHostedPDF(work, tempPath);
-			attachment = await Zotero.Attachments.importFromFile({
-				file: tempPath,
-				parentItemID: item.id,
-				title,
-				contentType: 'application/pdf',
-				fileBaseName: Zotero.Attachments.getFileBaseNameFromItem(item, {
-					attachmentTitle: title
-				}),
-				moveFile: true
-			});
-			if (attachment && canonicalURL) {
-				// The key-free URL, never the authenticated request we actually made
-				attachment.setField('url', canonicalURL);
-				attachment.setField('accessDate', 'CURRENT_TIMESTAMP');
-				await attachment.saveTx();
-			}
-		}
-		finally {
-			await IOUtils.remove(tempDir, { recursive: true, ignoreAbsent: true });
-		}
-
-		return attachment;
-	},
-
 	/**
 	 * Turn a work's locations into resolvers for Zotero's downloader, best first.
 	 *
@@ -602,7 +359,7 @@ ZoteroOpenAlex.Finder = {
 	},
 
 	async _saveWorkID(item, work) {
-		let id = ZoteroOpenAlex.API.shortWorkID(work);
+		let id = ZotPDF.API.shortWorkID(work);
 		if (!id) {
 			return;
 		}
@@ -615,18 +372,5 @@ ZoteroOpenAlex.Finder = {
 		lines.push('OpenAlex: ' + id);
 		item.setField('extra', lines.join('\n').trim());
 		await item.saveTx();
-	},
-
-	_describeError(e) {
-		switch (e && e.openAlexCode) {
-			case 'auth':
-				return ZoteroOpenAlex.getString('openalex-pdf-error-auth');
-			case 'rate-limit':
-				return ZoteroOpenAlex.getString('openalex-pdf-error-rate-limit');
-			case 'offline':
-				return ZoteroOpenAlex.getString('openalex-pdf-error-offline');
-			default:
-				return (e && e.message) || ZoteroOpenAlex.getString('openalex-pdf-error-unexpected');
-		}
 	}
 };

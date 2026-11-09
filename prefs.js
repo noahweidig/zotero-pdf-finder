@@ -1,40 +1,54 @@
-// Default preferences for Zotero OpenAlex PDF Finder.
-// Loaded by Zotero at plugin install; read via Zotero.Prefs.get('openalexpdf.<name>').
+// Default preferences for ZotPDF.
+// Read via Zotero.Prefs.get('zotpdf.<name>'), i.e. extensions.zotero.zotpdf.<name>.
 
-// Contact email sent as OpenAlex's `mailto` parameter (the "polite pool").
-pref("extensions.zotero.openalexpdf.email", "");
+// Contact email: sent to Unpaywall, NCBI, Europe PMC, Crossref and as OpenAlex's
+// `mailto` ("polite pool"). Asked for once on the first run.
+pref("extensions.zotero.zotpdf.email", "");
 
 // OpenAlex API key. Free at https://openalex.org/settings/api
-// Required only for OpenAlex-hosted PDF downloads and for higher metadata limits.
-pref("extensions.zotero.openalexpdf.apiKey", "");
+// Needed only for OpenAlex-hosted PDF downloads and higher metadata limits.
+pref("extensions.zotero.zotpdf.apiKey", "");
 
-// Download PDFs that OpenAlex hosts itself (content.openalex.org).
-// Requires an API key and consumes credits (~$0.01/file, ~100/day free).
-pref("extensions.zotero.openalexpdf.useHostedContent", true);
+// Download PDFs that OpenAlex hosts itself (needs a key; ~$0.01/file, ~100/day free).
+pref("extensions.zotero.zotpdf.useHostedContent", true);
 
-// Try the OpenAlex-hosted copy before publisher/repository links.
-// Off by default: the free route costs no credits.
-pref("extensions.zotero.openalexpdf.preferHostedContent", false);
+// Try the OpenAlex-hosted copy before open-access links. Off: the free route costs no credits.
+pref("extensions.zotero.zotpdf.preferHostedContent", false);
 
-// When an item has no DOI/PMID/arXiv ID, look the work up by title.
-// Matches are accepted only on an exact normalized title plus a year check.
-pref("extensions.zotero.openalexpdf.titleSearchFallback", true);
+// As a last step, hand publisher pages to Zotero's own downloader (uses your institutional access).
+pref("extensions.zotero.zotpdf.tryPublisherPages", true);
 
-// Skip items that already have a PDF attachment.
-pref("extensions.zotero.openalexpdf.skipItemsWithPDF", true);
+// Items without DOI/PMID/arXiv ID: look the work up by exact normalized title plus a year check.
+pref("extensions.zotero.zotpdf.titleSearchFallback", true);
 
 // Record the matched OpenAlex work ID in the item's Extra field.
-pref("extensions.zotero.openalexpdf.saveWorkIDToExtra", false);
+pref("extensions.zotero.zotpdf.saveWorkIDToExtra", false);
 
-// Milliseconds to pause between items, to stay well under OpenAlex's rate limit.
-pref("extensions.zotero.openalexpdf.requestDelay", 250);
+// Tag that selects the batch for the Tools-menu runs.
+pref("extensions.zotero.zotpdf.triggerTag", "zotpdf");
 
-// FullVahti defaults (read via Zotero.Prefs.get('extensions.fullvahti.<name>', true)).
-pref("extensions.fullvahti.email", "");
-pref("extensions.fullvahti.triggerTag", "cite:closer-look");
-pref("extensions.fullvahti.reportNote", true);
-pref("extensions.fullvahti.openURLResolver", "");
-pref("extensions.fullvahti.delayMs", 400);
-pref("extensions.fullvahti.writebackEnabled", false);
-pref("extensions.fullvahti.writebackToken", "");
-pref("extensions.fullvahti.auditLog", "");
+// After retraction and metadata checks, save one report note. (PDF runs never write notes.)
+pref("extensions.zotero.zotpdf.reportNote", true);
+
+// Milliseconds to pause between items and requests.
+pref("extensions.zotero.zotpdf.delayMs", 400);
+
+// Local write-back API for external tools (advanced; off by default).
+pref("extensions.zotero.zotpdf.writebackEnabled", false);
+pref("extensions.zotero.zotpdf.writebackToken", "");
+pref("extensions.zotero.zotpdf.auditLog", "");
+
+// Extra free sources (see src/sources.js). Each can be switched off.
+pref("extensions.zotero.zotpdf.source.europepmc", true);
+pref("extensions.zotero.zotpdf.source.semanticscholar", true);
+pref("extensions.zotero.zotpdf.source.crossref", true);
+pref("extensions.zotero.zotpdf.source.core", true);
+pref("extensions.zotero.zotpdf.source.openaire", true);
+pref("extensions.zotero.zotpdf.source.preprints", true);
+pref("extensions.zotero.zotpdf.source.hal", true);
+pref("extensions.zotero.zotpdf.source.doaj", true);
+// Retry dead open-access links through the Internet Archive's copies.
+pref("extensions.zotero.zotpdf.source.wayback", true);
+// Optional keys: raise rate limits.
+pref("extensions.zotero.zotpdf.coreKey", "");
+pref("extensions.zotero.zotpdf.semanticScholarKey", "");

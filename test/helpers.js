@@ -1,6 +1,6 @@
 "use strict";
 
-// Load fullvahti.js (which is written for Zotero, not Node) into a sandbox with
+// Load engine.js (which is written for Zotero, not Node) into a sandbox with
 // just enough mocked globals to exercise its logic. No build step, no deps —
 // the plugin is plain JS and so are its tests.
 
@@ -8,7 +8,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-const SRC = fs.readFileSync(path.join(__dirname, "..", "src", "fullvahti.js"), "utf8");
+const SRC = fs.readFileSync(path.join(__dirname, "..", "src", "engine.js"), "utf8");
 
 function load(opts = {}) {
 	const prefStore = Object.assign({}, opts.prefs);
@@ -19,6 +19,7 @@ function load(opts = {}) {
 	const sandbox = {
 		console,
 		setTimeout,
+		ZotPDF: {},
 		Services: { prompt: { confirm: () => true, prompt: () => true } },
 		IOUtils: { write: async () => {}, remove: async () => {} },
 		PathUtils: { join: (...a) => a.join("/") },
@@ -66,7 +67,7 @@ function load(opts = {}) {
 
 	vm.createContext(sandbox);
 	vm.runInContext(SRC, sandbox);
-	return { fv: sandbox.FullVahti, sandbox, prefStore, notes };
+	return { fv: sandbox.ZotPDF.Engine, sandbox, prefStore, notes };
 }
 
 // Build a mock Zotero item. `fields` maps field name -> value; list a field in

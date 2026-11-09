@@ -6,10 +6,10 @@ testing and releasing; the user guide is in [README.md](README.md).
 ## Build
 
 ```bash
-git clone https://github.com/Littview/zotero-openalex-pdf.git
-cd zotero-openalex-pdf
+git clone https://github.com/noahweidig/ZotPDF.git
+cd ZotPDF
 npm run lint     # parses every source file, checks Fluent IDs and versions
-npm run build    # writes build/zotero-openalex-pdf-<version>.xpi
+npm run build    # writes build/zotpdf-<version>.xpi
 ```
 
 There is no bundler and no runtime dependency. The `.xpi` is a zip of the source tree.
@@ -19,36 +19,40 @@ There is no bundler and no runtime dependency. The `.xpi` is a zip of the source
 ```
 manifest.json          plugin metadata, Zotero version range, update URL
 bootstrap.js           startup/shutdown entry points
-prefs.js               default preference values
-src/plugin.js          lifecycle, menus, preference pane, progress UI
+prefs.js               default preference values (extensions.zotero.zotpdf.*)
+src/plugin.js          lifecycle, ZotPDF submenus, preference pane, progress UI
 src/openalex-client.js OpenAlex HTTP client: batching, auth, rate limits
-src/finder.js          item eligibility, matching, PDF resolution, attaching
+src/finder.js          item matching and the OpenAlex source (links, hosted, publisher pages)
+src/engine.js          engine: PDF chain, retraction and metadata checks, tags, write-back
+src/sources.js         extra free sources (Europe PMC, Semantic Scholar, CORE, ...)
 preferences.xhtml/.js  settings pane
-locale/en-US/*.ftl     all user-facing strings
+locale/en-US/*.ftl     menu, progress and error strings
+test/                  node --test unit tests for the engine and the OpenAlex fallback
+docs/                  documentation site sources; scripts/build-docs.js builds _site/
 update.json            update manifest Zotero polls (written by the release workflow)
 ```
 
-## How matching works
+`src/engine.js` contains Apache-2.0 licensed code (see `LICENSE-APACHE` and `NOTICE`); keep those
+files and the file header when you change it.
+
+## How the PDF chain works
+
+`ZotPDF.Engine.run()` handles each item: extract DOI/PMID/PMCID, then `resolveOA()` tries
+Unpaywall, PubMed Central (OA subset, Europe PMC fallback), and finally the OpenAlex
+fallback from `ZotPDF.Finder.fallbackFor(item)`. That returns open-access links, an
+optional OpenAlex-hosted download, and an optional publisher-page step through Zotero's
+downloader. Finding PDFs writes tags only; it never creates a note.
+
+### Matching items to OpenAlex
 
 | Item has | Lookup | Accepted when |
 | --- | --- | --- |
-| DOI (field or `DOI:` in Extra) | `filter=doi:…`, 50 per request | Always. DOIs are exact |
+| DOI (field or `DOI:` in Extra) | `filter=doi:…` | Always. DOIs are exact |
 | arXiv ID in Extra or URL, no DOI | Converted to `10.48550/arxiv.<id>` | Always |
-| `PMID:` in Extra, no DOI match | `filter=pmid:…`, 50 per request | Always |
+| `PMID:` in Extra, no DOI match | `filter=pmid:…` | Always |
 | Neither | `filter=title.search:…` | Normalized titles are identical **and** years differ by at most 1 |
 
-Normalization casefolds, strips accents and removes punctuation. A candidate with an
-identical title but a year more than one off is reported as "Possible match rejected"
-rather than attached.
-
-Items with an arXiv ID also get arXiv's own PDF as a source, so they are covered even
-when OpenAlex has no record under arXiv's DOI (common for preprints from before 2022) or
-its only exact-title record carries a re-registered DOI with the wrong year.
-
-Once a work is matched, sources are tried in this order: direct PDF links before landing
-pages, published before accepted before submitted versions, open access before
-paywalled. The OpenAlex-hosted copy (`content.openalex.org`, needs a key) is tried last
-unless **Try the OpenAlex copy first** is on.
+Items with an arXiv ID also get arXiv's own PDF as a source.
 
 ### OpenAlex cost model
 
@@ -64,21 +68,21 @@ Since February 2026 OpenAlex meters its API by credit, with a daily free allowan
 Responses carry `X-RateLimit-*` headers; **Test Key** in the settings reports the balance.
 
 The API key lives in the Zotero profile's preferences
-(`extensions.zotero.openalexpdf.apiKey`), never in the library, and is sent as an
+(`extensions.zotero.zotpdf.apiKey`), never in the library, and is sent as an
 `Authorization: Bearer` header so it can't end up in a stored URL or a debug log. If
 OpenAlex rejects it, metadata lookups continue anonymously and only hosted downloads are
 switched off.
 
-One hidden preference has no UI: `extensions.zotero.openalexpdf.requestDelay` (default
-`250`) is the pause in milliseconds between items.
+One hidden preference has no UI: `extensions.zotero.zotpdf.delayMs` (default `400`) is
+the pause in milliseconds between items and requests.
 
 ## Developing against a live Zotero
 
 Point Zotero at your working copy instead of installing the `.xpi`:
 
 ```bash
-echo -n "/absolute/path/to/zotero-openalex-pdf" \
-  > "<zotero profile>/extensions/openalex-pdf@littview.com"
+echo -n "/absolute/path/to/ZotPDF" \
+  > "<zotero profile>/extensions/zotpdf@noahweidig"
 ```
 
 Restart Zotero, then **enable the plugin in Tools → Plugins**. Zotero ships with
@@ -90,7 +94,7 @@ scratch profile and data directory:
 
 ```bash
 mkdir -p /tmp/zdev/profile/extensions /tmp/zdev/data
-cp build/zotero-openalex-pdf-*.xpi "/tmp/zdev/profile/extensions/openalex-pdf@littview.com.xpi"
+cp build/zotpdf-*.xpi "/tmp/zdev/profile/extensions/zotpdf@noahweidig.xpi"
 cat > /tmp/zdev/profile/prefs.js <<'PREFS'
 user_pref("extensions.autoDisableScopes", 0);
 user_pref("extensions.zotero.debug.log", true);
@@ -110,20 +114,26 @@ Any helper plugin you install in that profile needs an `https` `update_url` in i
 manifest. With an `http` one, the add-on manager quietly marks it `appDisabled`.
 
 **Help → Debug Output Logging** shows the plugin's messages, all prefixed with
-`[OpenAlex PDF Finder]`.
+`[ZotPDF]`.
 
 ### Scripting it
 
-The plugin publishes itself as `Zotero.OpenAlexPDF`, so it can be driven from
-**Tools → Developer → Run JavaScript**:
+The plugin publishes itself as `Zotero.ZotPDF`, with the engine at `Zotero.ZotPDF.Engine`,
+so it can be driven from **Tools → Developer → Run JavaScript**:
 
 ```javascript
-await Zotero.OpenAlexPDF.Finder.run(ZoteroPane.getSelectedItems());
+await Zotero.ZotPDF.Engine.run(ZoteroPane.getSelectedItems(), window);
 ```
+
+## Documentation site
+
+`docs/src/*.html` are page fragments, `docs/layout.html` is the shared frame. Build with
+`npm run docs` (writes `_site/`). The **Docs** workflow publishes it to GitHub Pages on
+every change under `docs/`; enable it once under Settings → Pages → Source: GitHub Actions.
 
 ## Translations
 
-Copy `locale/en-US/openalex-pdf.ftl` to `locale/<your-locale>/openalex-pdf.ftl`,
+Copy `locale/en-US/zotpdf.ftl` to `locale/<your-locale>/zotpdf.ftl`,
 translate the values (not the IDs), and open a pull request.
 
 ## Releasing
@@ -131,11 +141,9 @@ translate the values (not the IDs), and open a pull request.
 1. Bump `version` in both `manifest.json` and `package.json` (`npm run lint` checks
    they match). `strict_max_version` is `*` on purpose, so a new Zotero major release
    doesn't disable the plugin. Test against it anyway when one comes out.
-2. Commit, then push an annotated tag at the head of `main`:
-   ```bash
-   git tag -a v0.3.1 -m 0.3.1 && git push --follow-tags
-   ```
-3. The **Release** workflow builds the `.xpi`, publishes a GitHub release with both
-   `zotero-openalex-pdf-<version>.xpi` and a stable-name `zotero-openalex-pdf.xpi` (what
-   the README's download link points at), and commits a fresh `update.json` to `main`.
-   Pull afterwards.
+2. Merge to `main`. The **Release** workflow notices the `manifest.json` change, and if
+   `v<version>` doesn't exist it builds the `.xpi`, creates the tag and a GitHub release
+   with `zotpdf-<version>.xpi` and a stable-name `zotpdf.xpi` (what the download link
+   points at), and commits a fresh `update.json` to `main`. Pull afterwards.
+3. You can also run the workflow by hand from the Actions tab, or push a `v*` tag that
+   matches the manifest version.

@@ -1,15 +1,14 @@
 /*
- * ZotPDF — OpenAlex PDF Finder + FullVahti.
- * OpenAlex PDF Finder: Copyright (c) 2026 Littview Inc. — MIT. See LICENSE.
- * FullVahti: Copyright 2026 Heidi Andersén / Vahtian — Apache-2.0. See LICENSE-FULLVAHTI.
+ * ZotPDF — find open-access PDFs, check retractions and citation metadata.
+ * Portions derived from MIT- and Apache-2.0-licensed works; see LICENSE,
+ * LICENSE-APACHE and NOTICE.
  *
  * Bootstrap entry points. Zotero loads this file into a privileged sandbox that
  * already provides Zotero, Services, Localization, IOUtils, PathUtils, fetch and
  * the REASONS constants (APP_SHUTDOWN etc.) as globals.
  */
 
-var ZoteroOpenAlex;
-var FullVahti;
+var ZotPDF;
 
 function install() {}
 
@@ -19,27 +18,12 @@ async function startup({ id, version, rootURI }) {
 	Services.scriptloader.loadSubScript(rootURI + 'src/plugin.js');
 	Services.scriptloader.loadSubScript(rootURI + 'src/openalex-client.js');
 	Services.scriptloader.loadSubScript(rootURI + 'src/finder.js');
-	await ZoteroOpenAlex.init({ id, version, rootURI });
+	Services.scriptloader.loadSubScript(rootURI + 'src/sources.js');
+	Services.scriptloader.loadSubScript(rootURI + 'src/engine.js');
 
-	// FullVahti is optional: a failure here must not take the OpenAlex finder down
-	try {
-		Zotero.PreferencePanes.register({
-			pluginID: id,
-			src: rootURI + 'preferences-fullvahti.xhtml',
-			scripts: [rootURI + 'preferences-fullvahti.js'],
-			label: 'FullVahti',
-			image: rootURI + 'icons/zotpdf-48.svg'
-		});
-		Services.scriptloader.loadSubScript(rootURI + 'src/fullvahti.js');
-		FullVahti.init({ id, version, rootURI });
-		// The preference pane runs in a separate scope and reaches FullVahti through this
-		Zotero.FullVahti = FullVahti;
-		FullVahti.addToAllWindows();
-		FullVahti.registerEndpoints();
-	}
-	catch (e) {
-		Zotero.logError(e);
-	}
+	ZotPDF.Engine.init({ id, version, rootURI });
+	await ZotPDF.init({ id, version, rootURI });
+	ZotPDF.Engine.registerEndpoints();
 }
 
 function shutdown(_data, reason) {
@@ -47,42 +31,26 @@ function shutdown(_data, reason) {
 	if (reason === APP_SHUTDOWN) {
 		return;
 	}
-	if (FullVahti) {
+	if (ZotPDF) {
 		try {
-			FullVahti.unregisterEndpoints();
-			FullVahti.removeFromAllWindows();
+			ZotPDF.Engine.unregisterEndpoints();
 		}
 		catch (e) {
 			Zotero.logError(e);
 		}
-		try {
-			delete Zotero.FullVahti;
-		}
-		catch (e) {
-			Zotero.FullVahti = undefined;
-		}
-		FullVahti = undefined;
-	}
-	if (ZoteroOpenAlex) {
-		ZoteroOpenAlex.shutdown();
-		ZoteroOpenAlex = undefined;
+		ZotPDF.shutdown();
+		ZotPDF = undefined;
 	}
 }
 
 function onMainWindowLoad({ window }) {
-	if (ZoteroOpenAlex) {
-		ZoteroOpenAlex.onMainWindowLoad(window);
-	}
-	if (FullVahti) {
-		FullVahti.addToWindow(window);
+	if (ZotPDF) {
+		ZotPDF.onMainWindowLoad(window);
 	}
 }
 
 function onMainWindowUnload({ window }) {
-	if (ZoteroOpenAlex) {
-		ZoteroOpenAlex.onMainWindowUnload(window);
-	}
-	if (FullVahti) {
-		FullVahti.removeFromWindow(window);
+	if (ZotPDF) {
+		ZotPDF.onMainWindowUnload(window);
 	}
 }

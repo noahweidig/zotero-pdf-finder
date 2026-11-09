@@ -1,28 +1,27 @@
 /*
- * Zotero OpenAlex PDF Finder — plugin lifecycle, menus, preferences and progress UI.
- * Copyright (c) 2026 Littview Inc. — MIT licensed. See LICENSE.
+ * ZotPDF — plugin lifecycle, menus, preferences and progress UI.
+ * Portions derived from MIT- and Apache-2.0-licensed works; see LICENSE, LICENSE-APACHE and NOTICE.
  */
 
-var ZoteroOpenAlex = {
+var ZotPDF = {
 	id: null,
 	version: null,
 	rootURI: null,
 
-	FTL_FILE: 'openalex-pdf.ftl',
-	PREF_BRANCH: 'openalexpdf.',
-	QUEUE_ID: 'openalex-pdf',
+	FTL_FILE: 'zotpdf.ftl',
+	PREF_BRANCH: 'zotpdf.',
+	QUEUE_ID: 'zotpdf',
 	API_KEY_URL: 'https://openalex.org/settings/api',
 
 	_l10n: null,
 	_prefPaneID: null,
 	_menuIDs: [],
-	// Zotero 7 has no MenuManager, so there the menu items are added to each window by
-	// hand. Window -> { elements, listeners } for removal.
+	// Zotero 7 has no MenuManager, so there the menus are added to each window by hand.
+	// Window -> { elements, listeners } for removal.
 	_legacyMenus: null,
 	_ownStringsWork: false,
-	_progressQueue: null,
-	_cancelled: false,
-	_onCancel: null,
+	// progress kind -> { queue, onCancel }
+	_queues: {},
 
 	async init({ id, version, rootURI }) {
 		this.id = id;
@@ -35,7 +34,7 @@ var ZoteroOpenAlex = {
 		// strings have to be reachable from it too.
 		try {
 			Zotero.ftl.addResourceIds([this.FTL_FILE]);
-			Zotero.getString('openalex-pdf-progress-title');
+			Zotero.getString('zotpdf-progress-title-find');
 			this._ownStringsWork = true;
 		}
 		catch (e) {
@@ -45,9 +44,8 @@ var ZoteroOpenAlex = {
 		await this.registerPreferencePane();
 		this.registerMenus();
 
-		// Exposed so the plugin can be driven from Tools -> Developer -> Run JavaScript,
-		// e.g. await Zotero.OpenAlexPDF.Finder.run(ZoteroPane.getSelectedItems())
-		Zotero.OpenAlexPDF = this;
+		// Exposed for the preferences pane and for Tools -> Developer -> Run JavaScript
+		Zotero.ZotPDF = this;
 
 		for (let win of Zotero.getMainWindows()) {
 			if (win.ZoteroPane) {
@@ -91,16 +89,20 @@ var ZoteroOpenAlex = {
 			// Not fatal — the strings just stay registered until restart
 		}
 
-		if (Zotero.OpenAlexPDF === this) {
-			delete Zotero.OpenAlexPDF;
+		if (Zotero.ZotPDF === this) {
+			delete Zotero.ZotPDF;
 		}
 
-		if (this._progressQueue && this._onCancel) {
-			this._progressQueue.removeListener('cancel', this._onCancel);
-			delete this._progressQueue._openAlexCancelListener;
+		for (let { queue, onCancel } of Object.values(this._queues)) {
+			try {
+				queue.removeListener('cancel', onCancel);
+				delete queue._zotpdfCancelListener;
+			}
+			catch (e) {
+				// The queue outlives us either way
+			}
 		}
-		this._progressQueue = null;
-		this._onCancel = null;
+		this._queues = {};
 		this._l10n = null;
 	},
 
@@ -142,9 +144,9 @@ var ZoteroOpenAlex = {
 			pluginID: this.id,
 			src: 'preferences.xhtml',
 			scripts: ['preferences.js'],
-			label: this.getString('openalex-pdf-prefs-title'),
+			label: this.getString('zotpdf-prefs-title'),
 			image: 'icons/zotpdf-48.svg',
-			helpURL: 'https://github.com/Littview/zotero-openalex-pdf#settings'
+			helpURL: 'https://noahweidig.github.io/ZotPDF/settings.html'
 		});
 	},
 
@@ -170,6 +172,60 @@ var ZoteroOpenAlex = {
 	},
 
 	//
+	// Commands
+	//
+
+	selectedItems(win) {
+		return (win && win.ZoteroPane ? win.ZoteroPane.getSelectedItems() : [])
+			.filter(item => item && item.isRegularItem() && item.isTopLevelItem());
+	},
+
+	/** PDFs, then retractions, then metadata, for the same selection. */
+	async fullCheck(win) {
+		let items = this.selectedItems(win);
+		if (!items.length) {
+			this.alert(win, this.getString('zotpdf-progress-title-find'), this.getString('zotpdf-no-items'));
+			return;
+		}
+		await this.Engine.run(items, win);
+		await this.Engine.runRetraction(items, win);
+		await this.Engine.runCitationCheck(items, win);
+	},
+
+	/**
+	 * One list drives both the MenuManager menus and the Zotero 7 fallback.
+	 * `scope` is 'item' (right-click menu, acts on the selection) or 'tools'.
+	 */
+	_menuSpec(scope) {
+		let E = () => this.Engine;
+		if (scope === 'item') {
+			return [
+				{ l10nID: 'zotpdf-menu-find', command: win => E().runForSelected(win) },
+				{ l10nID: 'zotpdf-menu-retractions', command: win => E().runRetractionForSelected(win) },
+				{ l10nID: 'zotpdf-menu-citations', command: win => E().runCitationCheckForSelected(win) },
+				{ separator: true },
+				{ l10nID: 'zotpdf-menu-full', command: win => this.fullCheck(win) }
+			];
+		}
+		return [
+			{ l10nID: 'zotpdf-menu-find-tagged', command: win => E().runForTag(win) },
+			{ l10nID: 'zotpdf-menu-retractions-tagged', command: win => E().runRetractionForTag(win) },
+			{ l10nID: 'zotpdf-menu-citations-tagged', command: win => E().runCitationCheckForTag(win) },
+			{ separator: true },
+			{ l10nID: 'zotpdf-menu-settings', command: () => this.openPreferences() },
+			{ l10nID: 'zotpdf-menu-audit', command: win => E().showAuditLog(win) }
+		];
+	},
+
+	_run(promise, win) {
+		// Errors here would otherwise be swallowed by the menu command handler
+		Promise.resolve(promise).catch((e) => {
+			Zotero.logError(e);
+			this.alert(win, this.getString('zotpdf-error-unexpected'), String(e));
+		});
+	},
+
+	//
 	// Menus
 	//
 
@@ -180,23 +236,30 @@ var ZoteroOpenAlex = {
 		}
 
 		let icon = this.rootURI + 'icons/zotpdf-16.svg';
+		let toMenus = scope => this._menuSpec(scope).map(entry => (entry.separator
+			? { menuType: 'separator' }
+			: {
+				menuType: 'menuitem',
+				l10nID: entry.l10nID,
+				onCommand: (event) => {
+					let win = event.target.ownerGlobal;
+					this._run(entry.command(win), win);
+				}
+			}));
 
 		let itemMenuID = Zotero.MenuManager.registerMenu({
-			menuID: 'openalex-pdf-item-menu',
+			menuID: 'zotpdf-item-menu',
 			pluginID: this.id,
 			target: 'main/library/item',
 			menus: [{
-				menuType: 'menuitem',
-				l10nID: 'openalex-pdf-menuitem',
+				menuType: 'submenu',
+				l10nID: 'zotpdf-menu',
 				icon,
 				onShowing: (event, ctx) => {
-					// Hide entirely for note-only or attachment-only selections
-					let items = (ctx.items || []).filter(item => item.isRegularItem() || item.parentItem);
+					let items = (ctx.items || []).filter(item => item && item.isRegularItem());
 					ctx.setVisible(items.length > 0);
 				},
-				onCommand: (event, ctx) => {
-					this.run(ctx.items, event.target.ownerGlobal);
-				}
+				menus: toMenus('item')
 			}]
 		});
 		if (itemMenuID) {
@@ -204,21 +267,14 @@ var ZoteroOpenAlex = {
 		}
 
 		let toolsMenuID = Zotero.MenuManager.registerMenu({
-			menuID: 'openalex-pdf-tools-menu',
+			menuID: 'zotpdf-tools-menu',
 			pluginID: this.id,
 			target: 'main/menubar/tools',
 			menus: [{
-				menuType: 'menuitem',
-				l10nID: 'openalex-pdf-menuitem-tools',
+				menuType: 'submenu',
+				l10nID: 'zotpdf-menu',
 				icon,
-				enableForTabTypes: ['library'],
-				onShowing: (event, ctx) => {
-					let items = (ctx.items || []).filter(item => item && item.isRegularItem());
-					ctx.setEnabled(items.length > 0);
-				},
-				onCommand: (event, ctx) => {
-					this.run(ctx.items, event.target.ownerGlobal);
-				}
+				menus: toMenus('tools')
 			}]
 		});
 		if (toolsMenuID) {
@@ -227,7 +283,7 @@ var ZoteroOpenAlex = {
 	},
 
 	/**
-	 * Zotero 7: the same two menu items as registerMenus(), added straight to the
+	 * Zotero 7: the same two submenus as registerMenus(), added straight to the
 	 * window's item context menu and Tools menu.
 	 */
 	_addLegacyMenus(win) {
@@ -238,40 +294,48 @@ var ZoteroOpenAlex = {
 		let entry = { elements: [], listeners: [] };
 		this._legacyMenus.set(win, entry);
 
-		let selectedItems = () => (win.ZoteroPane ? win.ZoteroPane.getSelectedItems() : []);
-		let add = (popupID, itemID, l10nID, onShowing) => {
+		let icon = `url("${this.rootURI}icons/zotpdf-16.svg")`;
+		let add = (popupID, menuID, scope, onShowing) => {
 			let popup = doc.getElementById(popupID);
 			if (!popup) {
 				this.log('Menu not found: ' + popupID);
 				return;
 			}
-			let menuitem = doc.createXULElement('menuitem');
-			menuitem.id = itemID;
-			menuitem.classList.add('menuitem-iconic');
-			menuitem.setAttribute('data-l10n-id', l10nID);
-			menuitem.style.listStyleImage = `url("${this.rootURI}icons/zotpdf-16.svg")`;
-			menuitem.addEventListener('command', () => this.run(selectedItems(), win));
-			popup.appendChild(menuitem);
-			entry.elements.push(menuitem);
+			let menu = doc.createXULElement('menu');
+			menu.id = menuID;
+			menu.classList.add('menu-iconic');
+			menu.setAttribute('data-l10n-id', 'zotpdf-menu');
+			menu.style.listStyleImage = icon;
+			let sub = doc.createXULElement('menupopup');
+			menu.appendChild(sub);
+
+			for (let spec of this._menuSpec(scope)) {
+				if (spec.separator) {
+					sub.appendChild(doc.createXULElement('menuseparator'));
+					continue;
+				}
+				let menuitem = doc.createXULElement('menuitem');
+				menuitem.setAttribute('data-l10n-id', spec.l10nID);
+				menuitem.addEventListener('command', () => this._run(spec.command(win), win));
+				sub.appendChild(menuitem);
+			}
+			popup.appendChild(menu);
+			entry.elements.push(menu);
 
 			let listener = (event) => {
 				if (event.target === popup) {
-					onShowing(menuitem);
+					onShowing(menu);
 				}
 			};
 			popup.addEventListener('popupshowing', listener);
 			entry.listeners.push([popup, listener]);
 		};
 
-		add('zotero-itemmenu', 'openalex-pdf-itemmenu', 'openalex-pdf-menuitem', (menuitem) => {
-			let items = selectedItems().filter(item => item.isRegularItem() || item.parentItem);
-			menuitem.hidden = !items.length;
+		add('zotero-itemmenu', 'zotpdf-itemmenu', 'item', (menu) => {
+			menu.hidden = !(win.ZoteroPane ? win.ZoteroPane.getSelectedItems() : [])
+				.some(item => item && (item.isRegularItem() || item.parentItem));
 		});
-		add('menu_ToolsPopup', 'openalex-pdf-toolsmenu', 'openalex-pdf-menuitem-tools', (menuitem) => {
-			let inLibrary = !win.Zotero_Tabs || win.Zotero_Tabs.selectedType === 'library';
-			let items = selectedItems().filter(item => item && item.isRegularItem());
-			menuitem.disabled = !inLibrary || !items.length;
-		});
+		add('menu_ToolsPopup', 'zotpdf-toolsmenu', 'tools', () => {});
 	},
 
 	_removeLegacyMenus(win) {
@@ -288,15 +352,6 @@ var ZoteroOpenAlex = {
 		this._legacyMenus.delete(win);
 	},
 
-	run(items, win) {
-		// Errors here would otherwise be swallowed by the menu command handler
-		this.Finder.run(items || [], win || Zotero.getMainWindow())
-			.catch(e => {
-				Zotero.logError(e);
-				this.alert(win, this.getString('openalex-pdf-error-unexpected'), String(e));
-			});
-	},
-
 	//
 	// Dialogs
 	//
@@ -311,54 +366,52 @@ var ZoteroOpenAlex = {
 
 	/**
 	 * A thin wrapper over Zotero's progress-queue dialog: a table of items with a
-	 * per-row status, a cancel button, and double-click to reveal the item.
+	 * per-row status, a cancel button, and double-click to reveal the item. One queue
+	 * per kind of run ('find', 'retraction', 'citation').
 	 */
-	createProgress() {
-		let queue = this._progressQueue;
-		if (!queue) {
-			queue = Zotero.ProgressQueues.get(this.QUEUE_ID);
-		}
+	createProgress(kind) {
+		let id = this.QUEUE_ID + '-' + kind;
+		let entry = this._queues[kind];
+		let queue = entry ? entry.queue : Zotero.ProgressQueues.get(id);
 		if (!queue) {
 			queue = Zotero.ProgressQueues.create({
-				id: this.QUEUE_ID,
+				id,
 				title: this._ownStringsWork
-					? 'openalex-pdf-progress-title'
+					? 'zotpdf-progress-title-' + kind
 					: 'pane.items.menu.findAvailableFile',
 				columns: this._ownStringsWork
-					? ['openalex-pdf-progress-column-item', 'openalex-pdf-progress-column-status']
+					? ['zotpdf-progress-column-item', 'zotpdf-progress-column-status']
 					: ['general.item', 'attachment.fullText']
 			});
 		}
-		if (queue !== this._progressQueue) {
-			// Zotero keeps progress queues for the whole session and has no way to delete
-			// one, so after an in-place update or a disable/enable the queue still carries
-			// the previous plugin instance's cancel listener. Replace it with ours.
-			let previous = queue._openAlexCancelListener;
-			if (previous) {
-				queue.removeListener('cancel', previous);
-			}
-			this._onCancel = () => {
-				this._cancelled = true;
-			};
-			queue.addListener('cancel', this._onCancel);
-			queue._openAlexCancelListener = this._onCancel;
-			this._progressQueue = queue;
+
+		// Zotero keeps progress queues for the whole session and has no way to delete
+		// one, so after an in-place update or a disable/enable the queue still carries
+		// the previous plugin instance's cancel listener. Replace it with ours.
+		let previous = queue._zotpdfCancelListener;
+		if (previous) {
+			queue.removeListener('cancel', previous);
 		}
+		let state = { cancelled: false };
+		let onCancel = () => {
+			state.cancelled = true;
+		};
+		queue.addListener('cancel', onCancel);
+		queue._zotpdfCancelListener = onCancel;
+		this._queues[kind] = { queue, onCancel };
 
 		// Start from a clean table on every run
 		for (let row of queue.getRows().slice()) {
 			queue.deleteRow(row.id);
 		}
-		this._cancelled = false;
 
 		let dialog = queue.getDialog();
 		dialog.showMinimizeButton(false);
 		dialog.open();
 
-		let self = this;
 		return {
 			get cancelled() {
-				return self._cancelled;
+				return state.cancelled;
 			},
 			add(item) {
 				queue.addRow(item);
@@ -378,19 +431,7 @@ var ZoteroOpenAlex = {
 		};
 	},
 
-	/**
-	 * Corner popup, used when there is nothing to put in the progress table.
-	 */
-	popup(headline, message) {
-		let progressWindow = new Zotero.ProgressWindow();
-		progressWindow.changeHeadline(headline);
-		let itemProgress = new progressWindow.ItemProgress('attachmentPDF', message);
-		progressWindow.show();
-		itemProgress.setProgress(100);
-		progressWindow.startCloseTimer(5000);
-	},
-
 	log(message) {
-		Zotero.debug('[OpenAlex PDF Finder] ' + message);
+		Zotero.debug('[ZotPDF] ' + message);
 	}
 };

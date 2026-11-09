@@ -1,10 +1,10 @@
 {
 	"manifest_version": 2,
 	"name": "ZotPDF",
-	"version": "0.4.0",
-	"description": "Find and attach open-access PDFs for your Zotero items (OpenAlex, Unpaywall, PubMed Central), check for retractions, and audit citation metadata. Combines OpenAlex PDF Finder and FullVahti.",
-	"homepage_url": "https://github.com/noahweidig/zotero-pdf-finder",
-	"author": "Noah Weidig (includes work by Littview and Heidi Anders\u00e9n)",
+	"version": "0.5.0",
+	"description": "Find open-access PDFs for your Zotero items from Unpaywall, PubMed Central and OpenAlex, check for retractions, and audit citation metadata.",
+	"homepage_url": "https://github.com/noahweidig/ZotPDF",
+	"author": "Noah Weidig",
 	"icons": {
 		"48": "icons/zotpdf-48.svg",
 		"96": "icons/zotpdf-96.svg"
@@ -12,7 +12,7 @@
 	"applications": {
 		"zotero": {
 			"id": "zotpdf@noahweidig",
-			"update_url": "https://raw.githubusercontent.com/noahweidig/zotero-pdf-finder/main/update.json",
+			"update_url": "https://raw.githubusercontent.com/noahweidig/ZotPDF/main/update.json",
 			"strict_min_version": "7.0",
 			"strict_max_version": "*"
 		}
