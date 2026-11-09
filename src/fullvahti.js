@@ -329,6 +329,11 @@ var FullVahti = {
 
 	storeAddedElement(elem) {
 		if (!elem.id) throw new Error("Element must have an id");
+		try {
+			elem.classList.add("menuitem-iconic");
+			elem.style.listStyleImage = `url("${this.rootURI}icons/zotpdf-16.svg")`;
+		}
+		catch (e) { /* icon is cosmetic */ }
 		this.addedElementIDs.push(elem.id);
 	},
 

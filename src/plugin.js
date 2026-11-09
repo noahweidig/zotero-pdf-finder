@@ -143,7 +143,7 @@ var ZoteroOpenAlex = {
 			src: 'preferences.xhtml',
 			scripts: ['preferences.js'],
 			label: this.getString('openalex-pdf-prefs-title'),
-			image: 'icons/openalex-48.svg',
+			image: 'icons/zotpdf-48.svg',
 			helpURL: 'https://github.com/Littview/zotero-openalex-pdf#settings'
 		});
 	},
@@ -179,7 +179,7 @@ var ZoteroOpenAlex = {
 			return;
 		}
 
-		let icon = this.rootURI + 'icons/openalex-16.svg';
+		let icon = this.rootURI + 'icons/zotpdf-16.svg';
 
 		let itemMenuID = Zotero.MenuManager.registerMenu({
 			menuID: 'openalex-pdf-item-menu',
@@ -249,7 +249,7 @@ var ZoteroOpenAlex = {
 			menuitem.id = itemID;
 			menuitem.classList.add('menuitem-iconic');
 			menuitem.setAttribute('data-l10n-id', l10nID);
-			menuitem.style.listStyleImage = `url("${this.rootURI}icons/openalex-16.svg")`;
+			menuitem.style.listStyleImage = `url("${this.rootURI}icons/zotpdf-16.svg")`;
 			menuitem.addEventListener('command', () => this.run(selectedItems(), win));
 			popup.appendChild(menuitem);
 			entry.elements.push(menuitem);

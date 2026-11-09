@@ -58,12 +58,12 @@ for (const id of referenced) {
 // 4. Files referenced from the manifest and from registration calls exist
 const referencedFiles = [
 	...Object.values(manifest.icons),
-	'icons/openalex-16.svg',
+	'icons/zotpdf-16.svg',
 	'preferences.xhtml',
 	'preferences.js',
 	'preferences-fullvahti.xhtml',
 	'preferences-fullvahti.js',
-	'icons/fullvahti.svg',
+	'icons/zotpdf-48.svg',
 	'LICENSE-FULLVAHTI',
 	'NOTICE'
 ];

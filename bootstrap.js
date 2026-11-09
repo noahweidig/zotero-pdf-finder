@@ -28,7 +28,7 @@ async function startup({ id, version, rootURI }) {
 			src: rootURI + 'preferences-fullvahti.xhtml',
 			scripts: [rootURI + 'preferences-fullvahti.js'],
 			label: 'FullVahti',
-			image: rootURI + 'icons/fullvahti.svg'
+			image: rootURI + 'icons/zotpdf-48.svg'
 		});
 		Services.scriptloader.loadSubScript(rootURI + 'src/fullvahti.js');
 		FullVahti.init({ id, version, rootURI });

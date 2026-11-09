@@ -6,8 +6,8 @@
 	"homepage_url": "https://github.com/noahweidig/zotero-pdf-finder",
 	"author": "Noah Weidig (includes work by Littview and Heidi Anders\u00e9n)",
 	"icons": {
-		"48": "icons/openalex-48.svg",
-		"96": "icons/openalex-96.svg"
+		"48": "icons/zotpdf-48.svg",
+		"96": "icons/zotpdf-96.svg"
 	},
 	"applications": {
 		"zotero": {
