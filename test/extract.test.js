@@ -85,3 +85,17 @@ test("hasPDF detects an existing PDF attachment", () => {
 	assert.equal(fv.hasPDF(makeItem({}, { attachments: [11] })), false);
 	assert.equal(fv.hasPDF(makeItem({}, { attachments: [] })), false);
 });
+
+test("pdfState classifies usable, broken and snapshot attachments", async () => {
+	const att = (type, exists = true) => ({ attachmentContentType: type, fileExists: async () => exists });
+	const { fv } = load({ itemsById: {
+		1: att("application/pdf"), 2: att("application/pdf", false), 3: att("text/html"),
+	} });
+	const mk = (ids) => makeItem({}, { attachments: ids });
+	assert.equal((await fv.pdfState(mk([1]))).usable, true);
+	let b = await fv.pdfState(mk([2]));
+	assert.equal(b.usable, false);
+	assert.equal(b.broken.length, 1);
+	assert.equal((await fv.pdfState(mk([3]))).snapshots.length, 1);
+	assert.equal((await fv.pdfState(mk([2, 1]))).usable, true);
+});
