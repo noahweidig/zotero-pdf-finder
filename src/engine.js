@@ -472,12 +472,15 @@ ZotPDF.Engine = {
 		let row = { key: item.key, title: (item.getField("title") || "(untitled)").substring(0, 70),
 			doi: doi || "", pmid: pmid || "", status: "", reason: "", source: "", license: "", oaStatus: "" };
 		try {
-			if (await this.hasUsablePDF(item)) {
+			let state = await this.pdfState(item);
+			if (state.usable) {
 				row.status = "found";
 				row.reason = "already had a PDF attachment";
 				row.existing = true;
 				return row;
 			}
+			let note = state.broken.length ? "replaced a broken PDF attachment"
+				: state.snapshots.length ? "upgraded a snapshot to a PDF" : "";
 			let cacheKey = doi || pmid || pmcid || this.normalizeStr(item.getField("title") || "");
 			let cachedAt = cacheKey ? this.cacheGet(cacheKey) : 0;
 			if (cachedAt) {
@@ -521,10 +524,16 @@ ZotPDF.Engine = {
 
 			if (res.status === "found") {
 				if (opts.dryRun) {
-					row.reason = "would attach" + (res.via ? " from " + res.via : "") + " (dry run)";
+					row.reason = "would attach" + (res.via ? " from " + res.via : "") + " (dry run)"
+						+ (note ? "; would have " + note : "");
 				}
 				else {
 					if (!res.attached) await this.attachPDF(item, res.bytes, res.source);
+					for (let att of state.broken) {
+						try { att.deleted = true; await att.saveTx(); }
+						catch (e) { this.log("trash broken attachment: " + e); }
+					}
+					if (note) row.reason = note;
 					let learned = sources && sources.ctx && sources.ctx.doi;
 					if (!doi && learned && this.getPref("writeBackDOI")) await this.fillDOI(item, learned);
 				}
@@ -557,18 +566,32 @@ ZotPDF.Engine = {
 		await this.setStatusTag(item, this.STATUS_BY_KEY[row.status]);
 	},
 
-	async hasUsablePDF(item) {
+	// usable: a PDF whose file exists. broken: PDF records whose file is gone (trashed
+	// after a replacement lands). snapshots: HTML-only attachments (kept; a PDF is added).
+	async pdfState(item) {
+		let st = { usable: false, broken: [], snapshots: [] };
 		for (let id of item.getAttachments()) {
 			let att = Zotero.Items.get(id);
-			if (!att || att.attachmentContentType !== "application/pdf") continue;
-			// A PDF record whose file is gone does not count
+			if (!att) continue;
+			let type = att.attachmentContentType;
+			if (type === "text/html" || type === "application/xhtml+xml") {
+				st.snapshots.push(att);
+				continue;
+			}
+			if (type !== "application/pdf") continue;
+			let exists = true;
 			if (typeof att.fileExists === "function") {
-				try { if (!(await att.fileExists())) continue; }
+				try { exists = await att.fileExists(); }
 				catch (e) { /* assume present */ }
 			}
-			return true;
+			if (exists) st.usable = true;
+			else st.broken.push(att);
 		}
-		return false;
+		return st;
+	},
+
+	async hasUsablePDF(item) {
+		return (await this.pdfState(item)).usable;
 	},
 
 	// Pure. Many PDFs embed their DOI in XMP or the Info dictionary. Reject only on
