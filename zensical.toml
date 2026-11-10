@@ -2,7 +2,7 @@
 site_name = "ZotPDF"
 site_description = "Find open-access PDFs from 15 free sources, flag retracted papers, and audit citation metadata, inside Zotero."
 site_author = "Noah Weidig"
-site_url = "https://noahweidig.github.io/zotpdf/"
+site_url = "https://noahweidig.com/zotpdf/"
 repo_url = "https://github.com/noahweidig/zotpdf"
 repo_name = "noahweidig/zotpdf"
 copyright = "ZotPDF is free and open source. MIT and Apache-2.0."
