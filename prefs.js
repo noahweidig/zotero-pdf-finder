@@ -48,6 +48,7 @@ pref("extensions.zotero.zotpdf.source.preprints", true);
 pref("extensions.zotero.zotpdf.source.hal", true);
 pref("extensions.zotero.zotpdf.source.doaj", true);
 pref("extensions.zotero.zotpdf.source.osti", true);
+pref("extensions.zotero.zotpdf.source.fatcat", true);
 // Retry dead open-access links through the Internet Archive's copies.
 pref("extensions.zotero.zotpdf.source.wayback", true);
 // Optional keys: raise rate limits.

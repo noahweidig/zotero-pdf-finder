@@ -13,7 +13,7 @@ Zotero → Settings → **ZotPDF** (Windows and Linux: Edit → Settings). Every
 | --- | --- | --- |
 | **Contact email** | asked once | Sent to Unpaywall, NCBI, Europe PMC, Crossref and OpenAlex (its "polite pool"). Never to us. |
 | **OpenAlex API key** | none | Free at [openalex.org/settings/api](https://openalex.org/settings/api). Needed only for hosted downloads. *Test* shows remaining credits. |
-| **Europe PMC, Semantic Scholar, Crossref, CORE, OpenAIRE, preprint servers, HAL, DOAJ, OSTI** | on | One checkbox each. Unpaywall, PubMed Central and OpenAlex links are always on. See [How it works](how-it-works.md). |
+| **Europe PMC, Semantic Scholar, Crossref, CORE, OpenAIRE, preprint servers, HAL, DOAJ, OSTI, Internet Archive Scholar** | on | One checkbox each. Unpaywall, PubMed Central and OpenAlex links are always on. See [How it works](how-it-works.md). |
 | **Retry dead links through the Internet Archive** | on | Looks up the Archive's copy of any open-access link that fails. |
 | **CORE key, Semantic Scholar key** | none | Optional. Only raise rate limits; both services answer without one for small batches. |
 | **Use OpenAlex-hosted full text** | on | Works only with an OpenAlex key. |

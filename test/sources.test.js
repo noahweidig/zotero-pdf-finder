@@ -274,3 +274,14 @@ test("build() includes OSTI and honours its switch", () => {
 	assert.ok(load().build({ landings: [] }).some(s => s.id === "osti"));
 	assert.ok(!load({ "source.osti": false }).build({ landings: [] }).some(s => s.id === "osti"));
 });
+
+test("fatcat: archived PDF copies come first, non-PDF files are skipped", async () => {
+	const S = load();
+	const ctx = ctxWith([[/fatcat/, ok({ files: [
+		{ mimetype: "application/pdf", urls: [{ rel: "web", url: "https://host.example/a.pdf" }, { rel: "webarchive", url: "https://web.archive.org/web/2020/https://host.example/a.pdf" }] },
+		{ mimetype: "text/html", urls: [{ rel: "web", url: "https://host.example/a.html" }] },
+	] })]], { doi: "10.1/x" });
+	const out = await S.fatcat(ctx);
+	eq(out.locations.map(l => l.url), ["https://web.archive.org/web/2020/https://host.example/a.pdf", "https://host.example/a.pdf"]);
+	eq((await S.fatcat(ctxWith([]))).locations, []);
+});

@@ -26,6 +26,7 @@ For each item ZotPDF extracts a DOI, PMID, PMCID and arXiv ID, then tries source
 | 9 | HAL | DOI or title | The French national open archive. |
 | 10 | DOAJ | DOI | Full-text links of open-access journals. |
 | 10b | OSTI | DOI | US Department of Energy research reports. |
+| 10c | Internet Archive Scholar | DOI | Archived PDF copies (fatcat). |
 | 11 | OpenAlex links | DOI, PMID, arXiv ID or title | Locations OpenAlex marks open access with a direct PDF URL. Published before accepted before submitted. |
 | 12 | OpenAlex hosted | needs an API key | Optional. About $0.01 a file, roughly 100 a day free. Tried before step 11 if you turn on "prefer hosted". |
 | 13 | Internet Archive | any dead link above | If a link from steps 1 to 11 fails, ZotPDF retries the Archive's copy of the same URL. |
