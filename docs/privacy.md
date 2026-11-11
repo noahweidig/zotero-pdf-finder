@@ -16,7 +16,7 @@ Zotero metadata is read locally. Nothing from your library is stored anywhere el
 | Europe PMC | DOI, PMID or title | Free full-text links |
 | Semantic Scholar | DOI, PMID, arXiv ID or title; key if set | Open-access PDF link |
 | CORE | DOI or title; key if set | Repository copies |
-| OpenAIRE, HAL, DOAJ, OSTI | DOI or title | Open copies |
+| OpenAIRE, HAL, DOAJ, OSTI, Internet Archive Scholar | DOI or title | Open copies |
 | arXiv, bioRxiv, medRxiv, OSF, PeerJ, Zenodo, Figshare | DOI or arXiv ID | Preprints and repository files |
 | Internet Archive | The URL of a dead open-access link | Archived copy of that PDF |
 | OpenAlex | DOI, PMID, arXiv ID or title; contact email; API key if set | Matching and PDF links |

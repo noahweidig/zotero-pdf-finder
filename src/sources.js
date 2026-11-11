@@ -6,7 +6,7 @@
  * only on an exact normalized title with a year within one.
  *
  * Source order: Europe PMC, Semantic Scholar, Crossref, CORE, OpenAIRE, preprint
- * servers and data repositories, HAL, DOAJ, OSTI. Each is a Settings checkbox.
+ * servers and data repositories, HAL, DOAJ, OSTI, Internet Archive Scholar. Each is a Settings checkbox.
  */
 
 ZotPDF.Sources = {
@@ -19,7 +19,8 @@ ZotPDF.Sources = {
 		{ id: 'preprints', label: 'Preprint servers' },
 		{ id: 'hal', label: 'HAL' },
 		{ id: 'doaj', label: 'DOAJ' },
-		{ id: 'osti', label: 'OSTI' }
+		{ id: 'osti', label: 'OSTI' },
+		{ id: 'fatcat', label: 'Internet Archive Scholar' }
 	],
 
 	// Licenses we accept as "free to read and share" on a publisher-supplied link
@@ -485,5 +486,31 @@ ZotPDF.Sources = {
 		let link = rec && (rec.links || []).find(l => l.rel === 'fulltext' && l.href);
 		// US Department of Energy research reports are public
 		return { locations: link ? [{ url: link.href, license: 'US Government work' }] : [] };
+	},
+
+	// Internet Archive Scholar (fatcat): archived copies of papers, looked up by DOI
+	async fatcat(ctx) {
+		if (!ctx.doi) {
+			return { locations: [] };
+		}
+		let rel = await this.json(ctx, 'https://api.fatcat.wiki/v0/release/lookup?hide=abstracts,refs&expand=files&doi='
+			+ encodeURIComponent(ctx.doi));
+		let seen = new Set();
+		let archived = [];
+		let others = [];
+		for (let f of (rel && rel.files) || []) {
+			if (f.mimetype && !/pdf/i.test(f.mimetype)) {
+				continue;
+			}
+			for (let u of f.urls || []) {
+				if (!u.url || seen.has(u.url) || !/^https?:/i.test(u.url)) {
+					continue;
+				}
+				seen.add(u.url);
+				(u.rel === 'webarchive' ? archived : others).push({ url: u.url, license: '' });
+			}
+		}
+		// Archive.org copies first: they stay up when the original host drops the file
+		return { locations: archived.concat(others) };
 	}
 };
