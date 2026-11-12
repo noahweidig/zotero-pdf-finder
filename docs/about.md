@@ -7,7 +7,7 @@ tags:
 
 # Credits and licenses
 
-ZotPDF includes code from open-source projects under the MIT and Apache-2.0 licenses, plus a Lucide icon under ISC. The full notices ship with the plugin and live in the repository:
+ZotPDF includes code from open-source projects under the MIT and Apache-2.0 licenses, plus the Zotero "attachment" icon (AGPL-3.0) and Lucide documentation icons under ISC. The full notices ship with the plugin and live in the repository:
 
 - [LICENSE](https://github.com/noahweidig/zotpdf/blob/main/LICENSE) (MIT)
 - [LICENSE-APACHE](https://github.com/noahweidig/zotpdf/blob/main/LICENSE-APACHE) (Apache-2.0) and [NOTICE](https://github.com/noahweidig/zotpdf/blob/main/NOTICE)
