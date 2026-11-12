@@ -3,9 +3,9 @@
 		"zotpdf@noahweidig": {
 			"updates": [
 				{
-					"version": "0.8.0",
-					"update_link": "https://github.com/noahweidig/zotpdf/releases/download/v0.8.0/zotpdf-0.8.0.xpi",
-					"update_hash": "sha256:d16abb3f417065267c239478ce9b13628d98072141b6a3c5a8d72ea7084a8fec",
+					"version": "0.8.2",
+					"update_link": "https://github.com/noahweidig/zotpdf/releases/download/v0.8.2/zotpdf-0.8.2.xpi",
+					"update_hash": "sha256:df1e1196fdf17d034153f9b2680aba07e823c5ea017e72d18710dca809a347a9",
 					"applications": {
 						"zotero": {
 							"strict_min_version": "7.0",
