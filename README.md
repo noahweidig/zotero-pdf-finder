@@ -58,6 +58,6 @@ no analytics. See [privacy](https://noahweidig.github.io/zotpdf/privacy/).
 
 ## Licenses
 
-ZotPDF includes code under the MIT and Apache-2.0 licenses and a Lucide icon (ISC):
+ZotPDF includes code under the MIT and Apache-2.0 licenses a Zotero icon (AGPL-3.0, see NOTICE) and Lucide docs icons (ISC):
 [`LICENSE`](LICENSE), [`LICENSE-APACHE`](LICENSE-APACHE), [`NOTICE`](NOTICE),
 [`LICENSE-LUCIDE`](LICENSE-LUCIDE). Developers: see [CONTRIBUTING.md](CONTRIBUTING.md).
