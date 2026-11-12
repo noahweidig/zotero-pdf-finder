@@ -1,6 +1,6 @@
 {
 	"name": "zotpdf",
-	"version": "0.8.3",
+	"version": "0.8.4",
 	"description": "Zotero plugin: find open-access PDFs from many free sources, check retractions and citation metadata",
 	"license": "MIT AND Apache-2.0",
 	"private": true,
