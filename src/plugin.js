@@ -558,6 +558,7 @@ var ZotPDF = {
 		let add = (label, fn) => {
 			let button = doc.createElement('button');
 			button.textContent = label;
+			button.style.cssText = 'box-sizing:border-box;margin:0;padding:4px 10px;line-height:1.2;display:inline-flex;align-items:center;justify-content:center';
 			button.addEventListener('click', () => this._run(fn(), win));
 			buttons.append(button);
 		};
