@@ -537,7 +537,7 @@ var ZotPDF = {
 		}
 
 		let wrap = doc.createElement('div');
-		wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:4px 0';
+		wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:4px 0 12px';
 		let line = (name, value) => {
 			let row = doc.createElement('div');
 			row.style.cssText = 'display:flex;gap:8px';
